@@ -1,0 +1,11 @@
+{
+  "name": "verboscribe2-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "npm --workspace apps/desktop run dev",
+    "build": "npm --workspace apps/desktop run build"
+  },
+  "workspaces": [
+    "apps/desktop"
+  ]
+}

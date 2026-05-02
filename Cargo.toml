@@ -1,0 +1,15 @@
+[workspace]
+members = [
+  "apps/desktop/src-tauri",
+  "crates/verboscribe-core",
+  "crates/verboscribe-audio",
+  "crates/verboscribe-platform",
+  "crates/verboscribe-storage",
+  "crates/verboscribe-transcription",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "UNLICENSED"
+repository = "https://github.com/ttotheq/verboscribe2"

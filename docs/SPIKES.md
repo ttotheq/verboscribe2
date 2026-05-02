@@ -1,0 +1,55 @@
+# Spikes
+
+## SPIKE-001: Rust Audio Library Choice
+
+Status: Done  
+Date: 2026-05-02
+
+Question:
+
+Which Rust audio capture approach is best for macOS and Windows WAV recording
+with level metering?
+
+Decision:
+
+Use **CPAL** for microphone input and **Hound** for WAV writing.
+
+Rationale:
+
+- CPAL is a low-level cross-platform audio I/O library. Its current docs list
+  support for default input/output devices, stream formats, and PCM streams, with
+  native hosts including macOS CoreAudio and Windows WASAPI.
+- Hound directly writes WAVE files, exposes `WavWriter`, and updates/finalizes
+  headers so produced recordings can be consumed by `whisper.cpp`.
+- This keeps audio capture in Rust and behind the existing `AudioRecorder` core
+  trait rather than tying the product flow to a Tauri UI plugin.
+
+Sources:
+
+- https://docs.rs/crate/cpal/latest
+- https://docs.rs/hound/latest/hound/struct.WavWriter.html
+
+Implementation shape:
+
+- `verboscribe-audio` owns the cross-platform recorder.
+- Use CPAL default input device initially.
+- Convert incoming samples to mono 16-bit PCM.
+- Write 16 kHz WAV files through Hound.
+- Track duration from sample count.
+- Track input level from recent sample RMS/peak.
+- Return a typed error for missing device, unsupported format, stream build
+  failure, stream runtime failure, and file write/finalize failure.
+
+Open implementation detail:
+
+- CPAL may deliver device-native sample rates. The vertical slice can first
+  request a 16 kHz mono stream if available, then add resampling if the default
+  device does not support it. If device support is inconsistent, add a small
+  resampler rather than pushing format complexity into transcription providers.
+
+Rejected for now:
+
+- Tauri microphone plugin: avoid adding a UI/plugin dependency before validating
+  the core recording needs.
+- Platform-specific AVFoundation/WASAPI first: better reserved for fallback
+  adapters if CPAL behavior is insufficient.
