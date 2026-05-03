@@ -169,6 +169,106 @@ Docs/process:
 - `./scripts/verify.sh` passed.
 - `./scripts/smoke-local-fixtures.sh` passed.
 
+## Files To Read First
+
+For the next development slice, read these first:
+
+1. `HANDOFF.md`
+2. `docs/SPRINTS.md`
+3. `docs/BACKLOG.md`
+4. `apps/desktop/src-tauri/src/app_service.rs`
+5. `apps/desktop/src-tauri/src/hotkeys.rs`
+6. `crates/verboscribe-audio/src/lib.rs`
+7. `crates/verboscribe-core/src/lib.rs`
+8. `docs/MANUAL_QA.md`
+
+## Current Working Behavior
+
+The current vertical slice works like this:
+
+1. The desktop shell starts and loads persisted settings.
+2. The Tauri global shortcut plugin registers the configured dictation hotkey.
+3. Hotkey `Pressed` is forwarded into `AppService`.
+4. `AppService` lazily builds a real desktop `DictationEngine` from saved
+   settings.
+5. The live CPAL recorder starts capturing microphone input into a mono
+   16 kHz WAV-compatible path.
+6. Hotkey `Released` stops recording.
+7. The local `whisper.cpp` provider transcribes the captured audio.
+8. The processed transcript is retained as `last_transcript` in app-service
+   state.
+9. Status commands report idle, recording, transcribing, success, or recovery
+   failure state.
+
+Current endpoint of the slice:
+
+- Transcript capture inside VerboScribe 2 works in the app-service flow.
+- Clipboard insertion into the original target app does not exist yet.
+- Target app tracking does not exist yet.
+
+## Manual Setup For Live Dictation
+
+To exercise the current live dictation path on this machine:
+
+1. Ensure the local `whisper.cpp` binary and model still exist at the paths
+   listed in `Current Environment Notes`, or set the matching environment
+   overrides for smoke scripts.
+2. Save valid `whisper.cpp` binary and model paths into app settings through the
+   existing settings flow before trying a real hotkey-driven dictation run.
+3. Grant microphone permission to the app when macOS or Windows prompts for it.
+4. Use the configured global hotkey to start and stop recording.
+
+Expected outcome with valid configuration:
+
+- Press starts recording.
+- Release stops recording.
+- Status advances through recording and transcribing.
+- The last transcript becomes visible in the app status surface.
+
+Expected outcome with missing provider configuration:
+
+- Dictation does not proceed.
+- Runtime status reports actionable recovery text for the missing binary or
+  model path.
+
+## Implementation Constraints
+
+- `verboscribe-core` must remain platform-neutral.
+- Product logic should stay out of Tauri command handlers.
+- The live CPAL stream must not be stored directly in shared app-service state.
+  `CpalAudioRecorder` uses a thread-backed recording controller because the
+  live stream ownership is not a clean shared-state fit on macOS.
+- Hotkey normalization for user-facing settings strings is separate from plugin
+  accelerator syntax.
+- The current app-service inserter is intentionally a no-op preview endpoint so
+  Sprint 6 could stop at transcript capture without pretending paste automation
+  exists.
+
+## Implemented vs Remaining
+
+Implemented:
+
+- persisted settings
+- local `whisper.cpp` transcription provider
+- live microphone capture adapter
+- global hotkey registration and pressed or released event handling
+- app-service runtime status and recovery reporting
+- real hotkey-to-transcript app-service flow
+
+Implemented but not manually verified on real desktops:
+
+- full hotkey-to-transcript live dictation flow
+- live microphone permissions and device behavior
+- global hotkey registration conflict behavior
+
+Not implemented:
+
+- clipboard insertion
+- target-app tracking
+- Windows paste/target tracking adapter decisions
+- Windows CI
+- packaging, signing, installers, and release distribution
+
 ## Important Decisions
 
 - Tauri 2 + Rust core + TypeScript UI.
@@ -223,6 +323,14 @@ Start Sprint 7. Recommended focus:
 4. Run manual recording QA on macOS and Windows before relying on live capture
    for further vertical-slice work.
 
+Exact next story candidate:
+
+- `VS2-009: Clipboard Paste Insertion`
+
+Recommended companion research or dependency:
+
+- `SPIKE-002: Windows Paste And Target Tracking`
+
 ## User/Manual QA Needed
 
 Manual recording QA is now needed for:
@@ -245,3 +353,6 @@ Before ending any future session:
 - Record any blockers, risks, and next actions here.
 - If a sprint ended, include review, retro, and retro actions.
 - Record the branch name and merge status if the work happened off `main`.
+- Make the handoff usable by a different AI model with no chat history.
+- Include current behavior, next story, key files, constraints, setup steps,
+  and implemented-vs-missing status explicitly.

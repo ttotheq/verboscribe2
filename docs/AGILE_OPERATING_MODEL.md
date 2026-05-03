@@ -151,6 +151,10 @@ Sprint closeout checklist:
 - Backlog statuses updated.
 - Verification command recorded.
 - Next sprint goal proposed.
+- `HANDOFF.md` updated as a cold-start continuation brief, not just a summary.
+- Current behavior, next slice, key files, constraints, environment
+  prerequisites, and manual QA needs made explicit enough for another AI model
+  to resume without prior conversation context.
 
 ## User Involvement
 
