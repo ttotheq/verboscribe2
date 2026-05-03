@@ -33,6 +33,20 @@ Repository verification:
 ./scripts/verify.sh
 ```
 
+GitHub CI runs these same baseline checks on `macos-latest` and
+`ubuntu-latest`:
+
+```sh
+cargo fmt --all -- --check
+cargo test --workspace
+npm --workspace apps/desktop run build
+./scripts/verify.sh
+```
+
+Windows CI is intentionally deferred for now. Add it when the desktop and audio
+adapter path is stable enough that a third platform gate will improve signal
+more than it adds maintenance cost.
+
 Local `whisper.cpp` provider smoke test, when the local binary/model/sample are
 installed:
 

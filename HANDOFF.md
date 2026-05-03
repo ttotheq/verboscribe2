@@ -1,6 +1,6 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-05-02, after Sprint 4 closeout.
+Last updated: 2026-05-02, after CI baseline setup.
 
 ## Resume First
 
@@ -60,7 +60,7 @@ Git workflow status:
 
 Current branch:
 
-- `main`
+- `feature/ci-baseline`
 
 Recent merge status:
 
@@ -155,6 +155,8 @@ Docs/process:
 - `docs/SPIKES.md`: spike decisions.
 - `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`, `docs/MANUAL_QA.md`,
   `docs/SETUP_AND_OPERATIONS.md`.
+- `.github/workflows/ci.yml`: GitHub Actions baseline CI on macOS and Linux for
+  format, tests, frontend build, and repo verification.
 - `docs/PLATFORM_SMOKE.md`: automated local fixture smoke and pending
   macOS/Windows manual smoke checklist.
 - `scripts/smoke-local-fixtures.sh`: local WAV validation plus `whisper.cpp`
@@ -206,7 +208,9 @@ Start Sprint 5. Recommended focus:
 1. Choose the next vertical-slice integration story. Recommended first item:
    VS2-007 Global Hotkey Adapter or app-service wiring for live capture.
 2. Add an app-service smoke path when the next platform adapter lands.
-3. Run manual recording QA on macOS and Windows before relying on live capture
+3. Add a Windows CI job once the desktop/audio path is stable enough that the
+   extra platform gate improves signal more than it adds maintenance cost.
+4. Run manual recording QA on macOS and Windows before relying on live capture
    for further vertical-slice work.
 
 Sprint 3 verification on `feature/vs2-010-settings-store`:
@@ -226,6 +230,9 @@ Sprint 3 verification on `feature/vs2-010-settings-store`:
   passed and `./scripts/verify.sh` passed.
 - After VS2-014, `cargo fmt --all -- --check`, `./scripts/verify.sh`, and
   `./scripts/smoke-local-fixtures.sh` passed.
+- On `feature/ci-baseline`, `cargo fmt --all -- --check`,
+  `cargo test --workspace`, `npm --workspace apps/desktop run build`, and
+  `./scripts/verify.sh` passed.
 
 ## User/Manual QA Needed
 
