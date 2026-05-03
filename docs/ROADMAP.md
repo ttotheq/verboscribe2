@@ -2,7 +2,7 @@
 
 ## Milestone 0: Foundation
 
-Status: started.
+Status: done.
 
 - Create Tauri/Rust workspace structure.
 - Document architecture and MVP scope.
@@ -19,6 +19,8 @@ Acceptance:
 ## Milestone 1: Vertical Slice
 
 Goal: global hotkey -> record audio -> transcribe -> paste into active app.
+
+Status: implementation complete, manual QA pending.
 
 Scope:
 
@@ -42,6 +44,8 @@ Acceptance:
 
 ## Milestone 2: Provider And Settings Hardening
 
+Status: ready after vertical-slice QA.
+
 - Add Groq Whisper provider behind the same trait.
 - Store Groq API key in platform secret storage.
 - Add provider status and actionable errors.
@@ -49,6 +53,8 @@ Acceptance:
 - Add validation and migrations.
 
 ## Milestone 3: Dictation Polish
+
+Status: future.
 
 - Press-and-hold mode if not already enabled in Milestone 1.
 - Cancel hotkey.
@@ -60,6 +66,8 @@ Acceptance:
 
 ## Milestone 4: Text Processing
 
+Status: future.
+
 - Port raw-first transcript processor behavior.
 - Add cleanup levels.
 - Add spoken commands.
@@ -68,6 +76,8 @@ Acceptance:
 - Add target-app style presets.
 
 ## Milestone 5: Privacy And Memory
+
+Status: future.
 
 - Add transcript history with storage modes:
   - save normally
@@ -78,6 +88,8 @@ Acceptance:
 - Add reset insights flow.
 
 ## Milestone 6: Packaging And Operations
+
+Status: future.
 
 - Add macOS `.app`/DMG build.
 - Add Windows installer build.

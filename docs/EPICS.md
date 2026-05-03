@@ -23,6 +23,8 @@ Success outcomes:
 - Hotkey starts/stops recording.
 - Local `whisper.cpp` returns a transcript.
 - Paste insertion works or leaves text on clipboard with recovery guidance.
+- The full loop is validated on macOS and Windows through manual QA and smoke
+  coverage.
 
 ## EPIC-03 Transcription Providers
 
@@ -47,6 +49,8 @@ Success outcomes:
 - Target app tracking.
 - Tray/menu-bar behavior.
 - Launch-at-login.
+- Platform adapters are isolated behind testable boundaries and documented
+  recovery paths.
 
 ## EPIC-04A Runtime Orchestration And Recovery
 
@@ -59,6 +63,8 @@ Success outcomes:
 - Backend emits status/progress/recovery events for the UI.
 - Cancellation works during recording and transcription.
 - Permission and paste failures are explicit, recoverable, and test-covered.
+- The app-service boundary exposes the current dictation state clearly enough to
+  support cold-start resumption and manual QA.
 
 ## EPIC-05 Dictation Quality
 
@@ -108,3 +114,5 @@ Success outcomes:
 - Clipboard and paste fallback checks.
 - Hotkey registration smoke checks.
 - Manual QA scripts/checklists stay aligned with implemented behavior.
+- Smoke and manual QA checks make it obvious which behaviors are implemented
+  versus validated on real desktops.

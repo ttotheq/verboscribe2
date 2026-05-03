@@ -159,7 +159,7 @@ Acceptance criteria:
 
 Status: Done
 
-## Backlog
+## Done
 
 ### VS2-013: Clipboard Safety Contract
 
@@ -234,6 +234,8 @@ Acceptance criteria:
 
 Status: Done
 
+## Ready
+
 ### VS2-016: App-Service Dictation Smoke Path
 
 Type: Story  
@@ -250,6 +252,15 @@ Acceptance criteria:
 - The smoke path is documented in the platform smoke notes.
 
 Status: Ready
+
+## Backlog
+
+- Model downloader/manager.
+- History browser/search.
+- Rich snippet manager.
+- Rich personal dictionary manager.
+- Diagnostics bundle that excludes transcript text by default.
+- Updater.
 
 ## Spikes
 
