@@ -1,6 +1,6 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-05-02, after CI baseline setup.
+Last updated: 2026-05-02, after Sprint 5 closeout.
 
 ## Resume First
 
@@ -60,10 +60,11 @@ Git workflow status:
 
 Current branch:
 
-- `feature/ci-baseline`
+- `feature/sprint-5-hotkeys`
 
 Recent merge status:
 
+- `feature/ci-baseline` merged into `main`
 - `feature/sprint-4-live-capture` merged into `main`
 
 Completed:
@@ -72,6 +73,7 @@ Completed:
 - Sprint 2: Local Audio And Transcription Slice.
 - Sprint 3: App-Service Integration And Recovery.
 - Sprint 4: Live Capture Adapter.
+- Sprint 5: Global Hotkey Adapter.
 
 Sprint 3 goal:
 
@@ -138,9 +140,11 @@ Audio:
 Tauri boundary:
 
 - `apps/desktop/src-tauri/src/app_service.rs`: Tauri-free app service with typed
-  DTOs, settings load/save, runtime status/recovery events, and a dry-run
-  dictation flow through the core engine.
+  DTOs, settings load/save, runtime status/recovery events, hotkey status, and
+  a dry-run dictation flow through the core engine.
 - `apps/desktop/src-tauri/src/commands.rs`: Tauri command adapters.
+- `apps/desktop/src-tauri/src/hotkeys.rs`: Tauri global-shortcut plugin setup,
+  registration, unregister, and settings-shortcut normalization.
 - `apps/desktop/src-tauri/src/lib.rs`: wires managed `AppService` and command
   handlers.
 
@@ -194,19 +198,22 @@ The smoke script uses environment overrides if paths differ:
 
 ## Known Gaps And Risks
 
-- Global hotkeys are not implemented yet.
 - Clipboard paste insertion and target app tracking are not implemented yet.
 - Windows-specific paste/target tracking still needs a spike.
 - Tauri app has not been launched or manually QA'd; only builds/tests have run.
 - `dist/`, packaging, signing, and installer workflows are not built yet.
 - Live recording still needs manual OS QA on macOS and Windows.
+- Global hotkey registration still needs manual OS QA on macOS and Windows.
+- Hotkeys currently update status state only; they do not yet start or stop the
+  live dictation workflow.
 
 ## Next Recommended Work
 
-Start Sprint 5. Recommended focus:
+Start Sprint 6. Recommended focus:
 
 1. Choose the next vertical-slice integration story. Recommended first item:
-   VS2-007 Global Hotkey Adapter or app-service wiring for live capture.
+   app-service wiring that connects the live recorder and hotkey events into a
+   real dictation flow.
 2. Add an app-service smoke path when the next platform adapter lands.
 3. Add a Windows CI job once the desktop/audio path is stable enough that the
    extra platform gate improves signal more than it adds maintenance cost.
@@ -233,13 +240,15 @@ Sprint 3 verification on `feature/vs2-010-settings-store`:
 - On `feature/ci-baseline`, `cargo fmt --all -- --check`,
   `cargo test --workspace`, `npm --workspace apps/desktop run build`, and
   `./scripts/verify.sh` passed.
+- After VS2-007, `cargo fmt --all -- --check`,
+  `npm --workspace apps/desktop run build`, and `./scripts/verify.sh` passed.
 
 ## User/Manual QA Needed
 
 Manual recording QA is now needed for:
 
 - live microphone capture
-- global hotkeys
+- global hotkey registration
 - text insertion
 - tray/menu-bar behavior
 - launch-at-login

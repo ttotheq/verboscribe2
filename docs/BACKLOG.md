@@ -201,7 +201,7 @@ Acceptance criteria:
 - Capture pressed and released states.
 - Show registration failure in UI.
 
-Status: Backlog
+Status: Done
 
 ### VS2-009: Clipboard Paste Insertion
 

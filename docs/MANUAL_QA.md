@@ -62,6 +62,15 @@ Groq Whisper:
   hanging the recording flow.
 - Recorded audio is accepted by WAV validation before transcription.
 
+## Hotkey Checks
+
+- Default dictation hotkey registers on app launch.
+- Hotkey registration failure is visible in the status UI.
+- Pressing the global hotkey updates the status surface to show `Pressed`.
+- Releasing the global hotkey updates the status surface to show `Released`.
+- Re-registering the configured hotkey does not leave duplicate registrations
+  behind.
+
 ## Privacy Checks
 
 - Default transcript history mode is `Never store after insertion`.

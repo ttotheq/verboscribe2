@@ -1,4 +1,7 @@
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use serde::{Deserialize, Serialize};
 use verboscribe_core::{
@@ -82,12 +85,47 @@ impl From<AppSettings> for SettingsDto {
 #[derive(Debug, Clone)]
 pub struct AppService {
     settings_store: JsonSettingsStore,
+    hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct HotkeyRuntimeState {
+    configured_shortcut: Option<String>,
+    active_accelerator: Option<String>,
+    last_event: Option<HotkeyEventState>,
+    registration_error: Option<String>,
+    registered: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HotkeyEventState {
+    Pressed,
+    Released,
+}
+
+impl HotkeyEventState {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Pressed => "Pressed",
+            Self::Released => "Released",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HotkeyStatusSnapshot {
+    configured_shortcut: String,
+    active_accelerator: Option<String>,
+    last_event: Option<HotkeyEventState>,
+    registration_error: Option<String>,
+    registered: bool,
 }
 
 impl Default for AppService {
     fn default() -> Self {
         Self {
             settings_store: JsonSettingsStore::default_for_app("VerboScribe 2"),
+            hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
         }
     }
 }
@@ -95,7 +133,10 @@ impl Default for AppService {
 impl AppService {
     #[cfg(test)]
     pub fn new(settings_store: JsonSettingsStore) -> Self {
-        Self { settings_store }
+        Self {
+            settings_store,
+            hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
+        }
     }
 
     pub fn app_status(&self) -> AppStatusDto {
@@ -107,12 +148,18 @@ impl AppService {
                 format!("Settings unavailable: {error}"),
             ),
         };
+        let hotkey_status = self.hotkey_status(&settings.hotkeys.dictation);
+        let recovery = hotkey_status
+            .registration_error
+            .as_ref()
+            .map(|error| format!("Hotkey unavailable: {error}"))
+            .unwrap_or(recovery);
 
         AppStatusDto {
             app_status: "Desktop shell ready".to_string(),
             engine_state: state_label(DictationState::Idle).to_string(),
             provider: settings.transcription.provider.label().to_string(),
-            hotkey: settings.hotkeys.dictation,
+            hotkey: format_hotkey_status(&hotkey_status),
             recovery,
             last_transcript: String::new(),
         }
@@ -208,6 +255,72 @@ impl AppService {
             FakeInserter,
         )
     }
+
+    pub fn set_hotkey_registered(&self, configured_shortcut: String, active_accelerator: String) {
+        self.mutate_hotkey_state(|state| {
+            state.configured_shortcut = Some(configured_shortcut);
+            state.active_accelerator = Some(active_accelerator);
+            state.registration_error = None;
+            state.registered = true;
+        });
+    }
+
+    pub fn set_hotkey_registration_failed(&self, configured_shortcut: String, error: String) {
+        self.mutate_hotkey_state(|state| {
+            state.configured_shortcut = Some(configured_shortcut);
+            state.active_accelerator = None;
+            state.last_event = None;
+            state.registration_error = Some(error);
+            state.registered = false;
+        });
+    }
+
+    pub fn clear_hotkey_registration(&self, configured_shortcut: String) {
+        self.mutate_hotkey_state(|state| {
+            state.configured_shortcut = Some(configured_shortcut);
+            state.active_accelerator = None;
+            state.last_event = None;
+            state.registration_error = None;
+            state.registered = false;
+        });
+    }
+
+    pub fn active_hotkey_accelerator(&self) -> Option<String> {
+        self.with_hotkey_state(|state| state.active_accelerator.clone())
+    }
+
+    pub fn record_hotkey_event(&self, event: HotkeyEventState) {
+        self.mutate_hotkey_state(|state| {
+            state.last_event = Some(event);
+        });
+    }
+
+    fn hotkey_status(&self, configured_shortcut: &str) -> HotkeyStatusSnapshot {
+        self.with_hotkey_state(|state| HotkeyStatusSnapshot {
+            configured_shortcut: state
+                .configured_shortcut
+                .clone()
+                .unwrap_or_else(|| configured_shortcut.to_string()),
+            active_accelerator: state.active_accelerator.clone(),
+            last_event: state.last_event,
+            registration_error: state.registration_error.clone(),
+            registered: state.registered,
+        })
+    }
+
+    fn mutate_hotkey_state(&self, mutate: impl FnOnce(&mut HotkeyRuntimeState)) {
+        if let Ok(mut state) = self.hotkey_state.lock() {
+            mutate(&mut state);
+        }
+    }
+
+    fn with_hotkey_state<T>(&self, read: impl FnOnce(&HotkeyRuntimeState) -> T) -> T {
+        let state = self
+            .hotkey_state
+            .lock()
+            .expect("hotkey state lock poisoned");
+        read(&state)
+    }
 }
 
 impl TryFrom<SettingsDto> for AppSettings {
@@ -264,6 +377,23 @@ fn dictation_mode_name(mode: SettingsDictationMode) -> &'static str {
 
 fn path_to_string(path: PathBuf) -> String {
     path.to_string_lossy().into_owned()
+}
+
+fn format_hotkey_status(status: &HotkeyStatusSnapshot) -> String {
+    let mut details = if status.registered {
+        vec!["Registered".to_string()]
+    } else if status.registration_error.is_some() {
+        vec!["Registration failed".to_string()]
+    } else {
+        vec!["Not registered".to_string()]
+    };
+    if let Some(event) = status.last_event {
+        details.push(format!("last {}", event.label()));
+    }
+    if status.active_accelerator.is_some() && status.registered {
+        details.push("active".to_string());
+    }
+    format!("{} ({})", status.configured_shortcut, details.join(", "))
 }
 
 fn status_event(phase: &str, message: &str, transcript: Option<String>) -> RuntimeEventDto {
@@ -428,6 +558,7 @@ mod tests {
 
         assert_eq!(status.engine_state, "Idle");
         assert_eq!(status.provider, "whisper.cpp");
+        assert_eq!(status.hotkey, "Control+Option+Space (Not registered)");
         assert_eq!(status.recovery, "No recovery needed");
     }
 
@@ -503,6 +634,37 @@ mod tests {
         let error = service.save_settings(settings).unwrap_err();
 
         assert!(error.contains("unsupported transcription provider"));
+    }
+
+    #[test]
+    fn app_status_surfaces_hotkey_registration_failure() {
+        let (_temp_dir, service) = temp_service();
+        service.set_hotkey_registration_failed(
+            "Control+Option+Space".to_string(),
+            "shortcut already registered by another app".to_string(),
+        );
+
+        let status = service.app_status();
+
+        assert_eq!(status.hotkey, "Control+Option+Space (Registration failed)");
+        assert!(status.recovery.contains("Hotkey unavailable"));
+    }
+
+    #[test]
+    fn app_status_tracks_last_hotkey_event() {
+        let (_temp_dir, service) = temp_service();
+        service.set_hotkey_registered(
+            "Control+Option+Space".to_string(),
+            "ctrl+alt+space".to_string(),
+        );
+        service.record_hotkey_event(HotkeyEventState::Pressed);
+
+        let status = service.app_status();
+
+        assert_eq!(
+            status.hotkey,
+            "Control+Option+Space (Registered, last Pressed, active)"
+        );
     }
 
     #[test]

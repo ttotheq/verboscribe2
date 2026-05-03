@@ -1,8 +1,9 @@
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::app_service::{
     AppService, AppStatusDto, DictationStatusDto, RuntimeEventDto, SettingsDto,
 };
+use crate::hotkeys;
 
 #[tauri::command]
 pub fn app_status(service: State<'_, AppService>) -> AppStatusDto {
@@ -39,4 +40,20 @@ pub fn save_settings(
     settings: SettingsDto,
 ) -> Result<SettingsDto, String> {
     service.save_settings(settings)
+}
+
+#[tauri::command]
+pub fn register_dictation_hotkey(
+    app: AppHandle,
+    service: State<'_, AppService>,
+) -> Result<(), String> {
+    hotkeys::register_from_settings(&app, &service)
+}
+
+#[tauri::command]
+pub fn unregister_dictation_hotkey(
+    app: AppHandle,
+    service: State<'_, AppService>,
+) -> Result<(), String> {
+    hotkeys::unregister_current(&app, &service)
 }

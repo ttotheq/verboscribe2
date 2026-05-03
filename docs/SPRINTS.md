@@ -580,3 +580,142 @@ Improvement actions:
 | --- | --- | --- | --- | --- |
 | RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Next scaffold/update | Open |
 | RA-009 | Add an app-service smoke path when a platform adapter first lands. | Lead AI | Sprint 5 planning | Open |
+
+## Sprint 5: Global Hotkey Adapter
+
+Status: Done  
+Goal: Register the dictation hotkey through the desktop shell and expose
+registration or event state clearly enough to support the next vertical-slice
+integration work.
+
+### Committed Items
+
+- VS2-007: Global Hotkey Adapter
+
+### Candidate Items
+
+- VS2-013: Clipboard Safety Contract
+
+### Definition Of Done
+
+- Register and unregister the dictation hotkey through Tauri/Rust.
+- Capture pressed and released shortcut states.
+- Show registration failure in the UI.
+- Verification remains green.
+- Manual QA impact is documented.
+
+### Risks And Dependencies
+
+- Global hotkey availability is OS- and environment-dependent; another app can
+  claim the same accelerator.
+- The current slice tracks hotkey state but does not yet start or stop live
+  dictation.
+- Manual desktop QA is required because registration behavior depends on the
+  active OS session.
+
+### Retro Actions Carried In
+
+| ID | Action | Owner | Status |
+| --- | --- | --- | --- |
+| RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Open |
+| RA-009 | Add an app-service smoke path when a platform adapter first lands. | Lead AI | Open |
+
+### Planned Execution Approach
+
+1. Start from `main` on branch `feature/sprint-5-hotkeys`.
+2. Add the official Tauri 2 global-shortcut plugin in the desktop shell.
+3. Keep registration state in the app-service layer so the UI can surface
+   registration errors and last pressed or released events.
+4. Re-run required verification and update manual QA notes for hotkeys.
+
+### Sprint Start Notes
+
+- Started on branch `feature/sprint-5-hotkeys`.
+- The next development slice was selected from the existing backlog as VS2-007.
+- Hotkey-specific manual QA notes were attached during sprint closeout.
+
+### Execution Notes
+
+- VS2-007 complete: the desktop shell now installs the official Tauri 2
+  global-shortcut plugin and registers the configured dictation hotkey on
+  startup.
+- Thin Rust commands now support hotkey register and unregister operations
+  without putting product logic in the command handlers.
+- `AppService` now tracks hotkey registration state, active accelerator, and
+  last pressed or released event so the UI can expose registration failure.
+- The frontend now refreshes status periodically so hotkey event state is
+  visible without reloading the app.
+- Verification after VS2-007: `cargo fmt --all -- --check`,
+  `npm --workspace apps/desktop run build`, and `./scripts/verify.sh` passed.
+
+### Sprint Review
+
+Increment delivered:
+
+- Tauri global shortcut plugin wiring in the desktop shell.
+- Rust-side register and unregister flow for the configured dictation hotkey.
+- UI-visible hotkey registration status and last pressed or released event.
+- Hotkey normalization tests and service-state coverage.
+- Manual QA notes for hotkey behavior on real desktops.
+
+Acceptance criteria passed:
+
+- Dictation hotkey registers and unregisters through Tauri/Rust.
+- Pressed and released shortcut states are captured in the app-service state.
+- Registration failure is shown in the status UI.
+- Verification remains green.
+- Manual QA impact is documented.
+
+Blocked or deferred:
+
+- The hotkey does not yet trigger live dictation; that integration is a later
+  slice.
+- Real desktop QA is still required on macOS and Windows to validate conflict
+  handling and event delivery.
+
+Backlog changes:
+
+- VS2-007 moved to Done.
+
+User review:
+
+- Manual hotkey QA is now required on macOS and Windows.
+
+Verification:
+
+- `cargo fmt --all -- --check` passed.
+- `npm --workspace apps/desktop run build` passed.
+- `./scripts/verify.sh` passed.
+
+### Retrospective
+
+What worked:
+
+- Keeping Tauri plugin wiring in the shell and status state in `AppService`
+  preserved the existing boundary.
+- Using the official plugin kept the implementation small and aligned with the
+  supported desktop platforms.
+- Status polling was enough to make pressed and released events visible without
+  prematurely redesigning the frontend.
+
+What slowed us down:
+
+- The plugin shortcut API accepted borrowed strings but not owned `String`
+  values, so registration calls needed one compile-and-correct pass.
+- Human-readable settings shortcuts needed a normalization layer before the
+  plugin could register them reliably.
+
+What should change next sprint:
+
+- Wire hotkey pressed and released events into the real dictation workflow
+  instead of just status tracking.
+- Add a narrow smoke path around live capture plus hotkey registration once the
+  app-service flow exists.
+
+Improvement actions:
+
+| ID | Action | Owner | Target | Status |
+| --- | --- | --- | --- | --- |
+| RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Next scaffold/update | Open |
+| RA-009 | Add an app-service smoke path when a platform adapter first lands. | Lead AI | Sprint 6 planning | Open |
+| RA-010 | Keep user-facing hotkey strings separate from plugin accelerator syntax. | Lead AI | Sprint 6 implementation | Open |

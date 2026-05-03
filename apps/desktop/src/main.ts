@@ -68,3 +68,6 @@ async function loadStatus() {
 }
 
 void loadStatus();
+window.setInterval(() => {
+  void loadStatus();
+}, 1000);
