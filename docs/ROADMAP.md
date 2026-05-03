@@ -33,6 +33,8 @@ Scope:
 - Clipboard fallback is explicit when automated paste fails.
 - Minimal settings persist: hotkey, mode, provider, whisper binary path, model
   path, language.
+- Validation work is tracked explicitly in `VS2-016`, `VS2-017`, and
+  `VS2-018`.
 
 Acceptance:
 

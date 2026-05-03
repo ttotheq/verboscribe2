@@ -159,8 +159,6 @@ Acceptance criteria:
 
 Status: Done
 
-## Done
-
 ### VS2-013: Clipboard Safety Contract
 
 Type: Story  
@@ -250,6 +248,41 @@ Acceptance criteria:
 - The smoke path runs locally without OS permissions or global hotkey
   registration.
 - The smoke path is documented in the platform smoke notes.
+
+Status: Ready
+
+### VS2-017: macOS End-To-End Dictation QA
+
+Type: Story  
+Epic: EPIC-08  
+User value: The live dictation flow is validated on a real macOS desktop
+before we rely on it for broader platform work.  
+Acceptance criteria:
+
+- Run the full hotkey-to-paste flow on macOS with valid local `whisper.cpp`
+  paths.
+- Verify microphone permission prompts and denied-permission recovery.
+- Verify clipboard fallback when paste automation fails.
+- Confirm the tested apps and remaining gaps in the handoff and manual QA
+  notes.
+
+Status: Ready
+
+### VS2-018: Windows Paste Validation And Hardening
+
+Type: Story  
+Epic: EPIC-08  
+User value: The Windows target-activation and paste path is either validated or
+reworked before we depend on it for the vertical slice.  
+Acceptance criteria:
+
+- Run the full hotkey-to-paste flow on Windows with valid local `whisper.cpp`
+  paths.
+- Verify target activation and paste behavior in the standard smoke targets.
+- If the first-pass Windows adapter proves unreliable, replace the weak point
+  with a direct Rust Win32 implementation or equivalent documented fix.
+- Record the tested path, any replacements, and remaining gaps in the handoff
+  and manual QA notes.
 
 Status: Ready
 

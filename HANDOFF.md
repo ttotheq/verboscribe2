@@ -1,6 +1,6 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-05-02, after Sprint 7 closeout.
+Last updated: 2026-05-02, after planning-doc cleanup.
 
 ## Resume First
 
@@ -310,6 +310,12 @@ Not implemented:
 - Windows CI
 - packaging, signing, installers, and release distribution
 
+Planned validation/hardening work:
+
+- `VS2-016: App-Service Dictation Smoke Path`
+- `VS2-017: macOS End-To-End Dictation QA`
+- `VS2-018: Windows Paste Validation And Hardening`
+
 ## Important Decisions
 
 - Tauri 2 + Rust core + TypeScript UI.
@@ -360,11 +366,11 @@ Start Sprint 8. Recommended focus:
 
 1. Implement `VS2-016: App-Service Dictation Smoke Path` so success and
    paste-failure flows can be checked without the live microphone.
-2. Run manual QA on macOS for end-to-end recording, target capture, paste
-   insertion, clipboard fallback, microphone permission, and Accessibility
-   failure behavior.
-3. Run manual QA on Windows for target activation and paste behavior before
-   relying on the first adapter design.
+2. Run `VS2-017: macOS End-To-End Dictation QA` and record the real desktop
+   apps, permissions, and failure behavior that were exercised.
+3. Run `VS2-018: Windows Paste Validation And Hardening` and either validate
+   the current adapter or replace the weak point with a direct Rust Win32
+   implementation.
 4. Add a Windows CI job once the desktop/audio/platform path is stable enough
    that the extra platform gate improves signal more than it adds maintenance
    cost.
@@ -389,6 +395,11 @@ Manual recording QA is now needed for:
 - tray/menu-bar behavior
 - launch-at-login
 - packaged app permissions
+
+Planned QA and hardening stories:
+
+- `VS2-017: macOS End-To-End Dictation QA`
+- `VS2-018: Windows Paste Validation And Hardening`
 
 ## Handoff Maintenance Checklist
 
