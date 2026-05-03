@@ -188,7 +188,7 @@ Acceptance criteria:
 - Permission/device failures map to typed errors with recovery text.
 - Manual QA impact is documented.
 
-Status: Backlog
+Status: Done
 
 ### VS2-007: Global Hotkey Adapter
 

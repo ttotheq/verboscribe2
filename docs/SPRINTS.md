@@ -436,3 +436,147 @@ Improvement actions:
 | RA-005 | Run Rust formatting checks before final verification. | Lead AI | Sprint 3 execution | Done |
 | RA-007 | Use sprint-level branch names when implementing multiple stories together. | Lead AI | Sprint 4 planning | Open |
 | RA-008 | Attach manual QA notes to every platform adapter story before implementation. | Lead AI | Sprint 4 planning | Open |
+
+## Sprint 4: Live Capture Adapter
+
+Status: Done  
+Goal: Capture live microphone audio into a transcription-ready WAV through the
+same core recorder boundary the vertical slice will use.
+
+### Committed Items
+
+- VS2-014: Live Microphone Capture Adapter
+
+### Candidate Items
+
+- VS2-013: Clipboard Safety Contract
+
+### Definition Of Done
+
+- `verboscribe-audio` provides a live recorder implementation using CPAL or a
+  documented fallback.
+- Stop returns a transcription-ready WAV file and duration.
+- Duplicate start and stop-without-start settle predictably.
+- Permission and device failures map into typed dictation errors.
+- Manual QA impact is documented.
+- Verification remains green.
+
+### Risks And Dependencies
+
+- Default input devices may expose stereo or non-16 kHz formats, so conversion
+  to the provider contract is required.
+- macOS and Windows microphone permission behavior is partly OS-driven and
+  cannot be fully validated in unit tests.
+- Manual OS-level recording checks are required before calling the adapter
+  production-ready.
+
+### Retro Actions Carried In
+
+| ID | Action | Owner | Status |
+| --- | --- | --- | --- |
+| RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Open |
+| RA-007 | Use sprint-level branch names when implementing multiple stories together. | Lead AI | Done |
+| RA-008 | Attach manual QA notes to every platform adapter story before implementation. | Lead AI | Done |
+
+### Planned Execution Approach
+
+1. Run baseline verification on `feature/sprint-4-live-capture`.
+2. Implement a CPAL-backed recorder in `verboscribe-audio` with predictable
+   start/stop/cancel state handling.
+3. Downmix and resample captured audio into the existing mono 16 kHz WAV
+   contract.
+4. Add unit coverage for format conversion and recorder state/error paths.
+5. Re-run required verification and update sprint notes.
+
+### Sprint Start Notes
+
+- Started on branch `feature/sprint-4-live-capture`.
+- Baseline verification passed: `cargo fmt --all -- --check` and
+  `./scripts/verify.sh`.
+- Manual QA expectations for recording checks were updated in
+  `docs/MANUAL_QA.md` before implementation.
+
+### Execution Notes
+
+- VS2-014 complete: `verboscribe-audio` now exposes a CPAL-backed
+  `CpalAudioRecorder` that implements the core `AudioRecorder` trait.
+- Captured device audio is normalized into the existing mono 16 kHz WAV
+  contract through downmixing, linear resampling, and i16 conversion.
+- Recorder state now settles predictably for duplicate start, stop-without-start,
+  and cancel.
+- CPAL permission-like failures map to `DictationError::MicrophonePermissionDenied`;
+  other device/stream failures map to `DictationError::Recording`.
+- Verification after VS2-014: `cargo fmt --all -- --check`,
+  `./scripts/verify.sh`, and `./scripts/smoke-local-fixtures.sh` passed.
+
+### Sprint Review
+
+Increment delivered:
+
+- CPAL-backed live microphone recorder behind the existing core recorder trait.
+- Audio normalization from device-native input into transcription-ready mono
+  16 kHz WAV output.
+- Unit coverage for recorder state, permission/device error mapping, and audio
+  normalization helpers.
+- Manual QA notes extended for live recording behavior.
+
+Acceptance criteria passed:
+
+- Live recorder implementation exists in `verboscribe-audio`.
+- Stop returns a transcription-ready WAV path and duration.
+- Duplicate start and stop-without-start settle predictably.
+- Permission and device failures map into typed dictation errors.
+- Manual QA impact is documented.
+- Verification remains green.
+
+Blocked or deferred:
+
+- Real OS-level recording QA is still required on macOS and Windows before the
+  adapter should be considered production-ready.
+- Hotkey, target tracking, and paste integration remain separate stories.
+
+Backlog changes:
+
+- VS2-014 moved to Done.
+
+User review:
+
+- Manual recording QA is now required on macOS and Windows.
+
+Verification:
+
+- `cargo fmt --all -- --check` passed.
+- `./scripts/verify.sh` passed.
+- `./scripts/smoke-local-fixtures.sh` passed.
+
+### Retrospective
+
+What worked:
+
+- Keeping the recorder behind the existing core trait avoided any churn in
+  `verboscribe-core`.
+- Pure helper tests for downmixing and resampling made the device-format work
+  deterministic.
+- Starting Sprint 4 with manual QA notes satisfied the retro action instead of
+  leaving it for closeout.
+
+What slowed us down:
+
+- CPAL stream sendability differs across platforms, so the recorder session had
+  to own a non-`Send` stream wrapper.
+- Very short fixture captures rounded down to `0 ms`, which required explicit
+  duration handling in the adapter.
+
+What should change next sprint:
+
+- Add a small app-service smoke path for starting/stopping the live recorder
+  once it is wired into the desktop boundary.
+- Keep platform adapter tests split between deterministic unit tests and
+  explicit manual QA checklists.
+
+Improvement actions:
+
+| ID | Action | Owner | Target | Status |
+| --- | --- | --- | --- | --- |
+| RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Next scaffold/update | Open |
+| RA-009 | Add an app-service smoke path when a platform adapter first lands. | Lead AI | Sprint 5 planning | Open |

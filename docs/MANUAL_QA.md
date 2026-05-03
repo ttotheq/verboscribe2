@@ -57,6 +57,10 @@ Groq Whisper:
 - Recording shorter than the minimum threshold is ignored.
 - Maximum recording duration stops and transcribes.
 - Low microphone input produces a visible warning without stopping recording.
+- Default microphone records successfully on macOS and Windows.
+- Denied or unavailable microphone input reports recovery text instead of
+  hanging the recording flow.
+- Recorded audio is accepted by WAV validation before transcription.
 
 ## Privacy Checks
 

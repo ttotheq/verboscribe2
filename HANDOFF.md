@@ -1,6 +1,6 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-05-02, after Sprint 3 closeout.
+Last updated: 2026-05-02, after Sprint 4 closeout.
 
 ## Resume First
 
@@ -60,13 +60,14 @@ Git workflow status:
 
 Current branch:
 
-- `feature/vs2-010-settings-store`
+- `feature/sprint-4-live-capture`
 
 Completed:
 
 - Sprint 1: Foundation To Testable Core.
 - Sprint 2: Local Audio And Transcription Slice.
 - Sprint 3: App-Service Integration And Recovery.
+- Sprint 4: Live Capture Adapter.
 
 Sprint 3 goal:
 
@@ -121,10 +122,14 @@ Transcription:
 Audio:
 
 - WAV utilities in `crates/verboscribe-audio/src/lib.rs`.
+- `CpalAudioRecorder` in `crates/verboscribe-audio/src/lib.rs`.
 - Writes mono 16 kHz 16-bit PCM WAV through Hound.
+- Captures live microphone input through CPAL.
 - Validates transcription-ready WAV files.
 - Rejects missing, stereo, wrong sample rate, and float WAVs.
 - Converts/clamps f32 samples to i16.
+- Downmixes multi-channel input and linearly resamples into the provider WAV
+  contract.
 
 Tauri boundary:
 
@@ -183,23 +188,22 @@ The smoke script uses environment overrides if paths differ:
 
 ## Known Gaps And Risks
 
-- Live microphone capture is not implemented yet.
 - Global hotkeys are not implemented yet.
 - Clipboard paste insertion and target app tracking are not implemented yet.
 - Windows-specific paste/target tracking still needs a spike.
 - Tauri app has not been launched or manually QA'd; only builds/tests have run.
 - `dist/`, packaging, signing, and installer workflows are not built yet.
+- Live recording still needs manual OS QA on macOS and Windows.
 
 ## Next Recommended Work
 
-Start Sprint 4. Recommended focus:
+Start Sprint 5. Recommended focus:
 
-1. Choose the next vertical-slice adapter story. Recommended first item:
-   VS2-014 Live Microphone Capture Adapter, because recording is the next
-   missing piece before hotkey/paste integration.
-2. Keep platform-specific capture code outside `verboscribe-core`.
-3. Attach manual QA notes before implementing platform adapters.
-4. Use a sprint-level branch name if the sprint will cover multiple stories.
+1. Choose the next vertical-slice integration story. Recommended first item:
+   VS2-007 Global Hotkey Adapter or app-service wiring for live capture.
+2. Add an app-service smoke path when the next platform adapter lands.
+3. Run manual recording QA on macOS and Windows before relying on live capture
+   for further vertical-slice work.
 
 Sprint 3 verification on `feature/vs2-010-settings-store`:
 
@@ -214,12 +218,14 @@ Sprint 3 verification on `feature/vs2-010-settings-store`:
 - After VS2-011, `cargo fmt --all -- --check` passed and
   `./scripts/verify.sh` passed.
 - `./scripts/smoke-local-fixtures.sh` passed.
+- Sprint 4 baseline on `feature/sprint-4-live-capture`: `cargo fmt --all -- --check`
+  passed and `./scripts/verify.sh` passed.
+- After VS2-014, `cargo fmt --all -- --check`, `./scripts/verify.sh`, and
+  `./scripts/smoke-local-fixtures.sh` passed.
 
 ## User/Manual QA Needed
 
-None immediately.
-
-Manual QA will become necessary when implementing:
+Manual recording QA is now needed for:
 
 - live microphone capture
 - global hotkeys
