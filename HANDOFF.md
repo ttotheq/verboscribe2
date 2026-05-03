@@ -60,10 +60,11 @@ Git workflow status:
 
 Current branch:
 
-- `feature/sprint-5-hotkeys`
+- `main`
 
 Recent merge status:
 
+- `feature/sprint-5-hotkeys` merged into `main`
 - `feature/ci-baseline` merged into `main`
 - `feature/sprint-4-live-capture` merged into `main`
 
