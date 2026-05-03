@@ -234,6 +234,23 @@ Acceptance criteria:
 
 Status: Done
 
+### VS2-016: App-Service Dictation Smoke Path
+
+Type: Story  
+Epic: EPIC-08  
+User value: Platform-facing dictation behavior can be checked repeatedly
+without depending only on manual desktop testing.  
+Acceptance criteria:
+
+- Add a focused smoke path for the app-service dictation cycle using injectable
+  adapters instead of the live microphone.
+- Cover both successful insertion and paste-failure transcript preservation.
+- The smoke path runs locally without OS permissions or global hotkey
+  registration.
+- The smoke path is documented in the platform smoke notes.
+
+Status: Ready
+
 ## Spikes
 
 ### SPIKE-002: Windows Paste And Target Tracking

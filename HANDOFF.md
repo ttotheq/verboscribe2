@@ -1,6 +1,6 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-05-02, after Sprint 6 closeout.
+Last updated: 2026-05-02, after Sprint 7 closeout.
 
 ## Resume First
 
@@ -64,6 +64,7 @@ Current branch:
 
 Recent merge status:
 
+- `feature/sprint-7-clipboard-insertion` merged into `main`
 - `feature/sprint-6-live-dictation` merged into `main`
 - `feature/sprint-5-hotkeys` merged into `main`
 - `feature/ci-baseline` merged into `main`
@@ -77,6 +78,7 @@ Completed:
 - Sprint 4: Live Capture Adapter.
 - Sprint 5: Global Hotkey Adapter.
 - Sprint 6: Live Dictation Service Integration.
+- Sprint 7: Clipboard Insertion And Target Tracking.
 
 ## Completed Implementation
 
@@ -131,12 +133,25 @@ Audio:
 - Downmixes multi-channel input and linearly resamples into the provider WAV
   contract.
 
+Platform:
+
+- `crates/verboscribe-platform/src/lib.rs`: platform boundary for target
+  capture and clipboard-first paste insertion.
+- `DesktopTargetTracker` captures the active app before recording and remembers
+  the last non-VerboScribe target.
+- `DesktopTextInserter` writes transcript text to the clipboard before
+  activation or paste automation.
+- Platform command execution is timeout-guarded so permission prompts or hung OS
+  commands do not stall the dictation flow.
+- First-pass Windows adapter design is documented in `docs/SPIKES.md` and
+  implemented through PowerShell plus Win32 interop command planning.
+
 Tauri boundary:
 
 - `apps/desktop/src-tauri/src/app_service.rs`: Tauri-free app service with typed
   DTOs, settings load/save, runtime status/recovery events, hotkey status, a
-  dry-run dictation flow, and a real live-capture dictation runtime that
-  retains the last transcript without clipboard insertion yet.
+  dry-run dictation flow, and a real live-capture dictation runtime that now
+  attempts target reactivation and paste insertion.
 - `apps/desktop/src-tauri/src/commands.rs`: Tauri command adapters, including
   explicit start, stop, and cancel dictation commands.
 - `apps/desktop/src-tauri/src/hotkeys.rs`: Tauri global-shortcut plugin setup,
@@ -177,10 +192,12 @@ For the next development slice, read these first:
 2. `docs/SPRINTS.md`
 3. `docs/BACKLOG.md`
 4. `apps/desktop/src-tauri/src/app_service.rs`
-5. `apps/desktop/src-tauri/src/hotkeys.rs`
-6. `crates/verboscribe-audio/src/lib.rs`
+5. `crates/verboscribe-platform/src/lib.rs`
+6. `apps/desktop/src-tauri/src/hotkeys.rs`
 7. `crates/verboscribe-core/src/lib.rs`
-8. `docs/MANUAL_QA.md`
+8. `docs/PLATFORM_SMOKE.md`
+9. `docs/MANUAL_QA.md`
+10. `docs/SPIKES.md`
 
 ## Current Working Behavior
 
@@ -191,20 +208,26 @@ The current vertical slice works like this:
 3. Hotkey `Pressed` is forwarded into `AppService`.
 4. `AppService` lazily builds a real desktop `DictationEngine` from saved
    settings.
-5. The live CPAL recorder starts capturing microphone input into a mono
+5. The platform target tracker captures the active app and remembers the last
+   non-VerboScribe target.
+6. The live CPAL recorder starts capturing microphone input into a mono
    16 kHz WAV-compatible path.
-6. Hotkey `Released` stops recording.
-7. The local `whisper.cpp` provider transcribes the captured audio.
-8. The processed transcript is retained as `last_transcript` in app-service
-   state.
-9. Status commands report idle, recording, transcribing, success, or recovery
+7. Hotkey `Released` stops recording.
+8. The local `whisper.cpp` provider transcribes the captured audio.
+9. The platform inserter writes the transcript to the clipboard before any
+   automation attempt.
+10. The target app is reactivated and the platform paste shortcut is attempted.
+11. The processed transcript is retained as `last_transcript` in app-service
+   state whether insertion succeeds or fails.
+12. Status commands report idle, recording, transcribing, success, or recovery
    failure state.
 
 Current endpoint of the slice:
 
-- Transcript capture inside VerboScribe 2 works in the app-service flow.
-- Clipboard insertion into the original target app does not exist yet.
-- Target app tracking does not exist yet.
+- First-pass end-to-end paste insertion now exists through the platform crate.
+- Clipboard-first fallback keeps transcript text available if automation fails.
+- Manual QA is still required before treating macOS or Windows insertion as
+  reliable.
 
 ## Manual Setup For Live Dictation
 
@@ -214,15 +237,20 @@ To exercise the current live dictation path on this machine:
    listed in `Current Environment Notes`, or set the matching environment
    overrides for smoke scripts.
 2. Save valid `whisper.cpp` binary and model paths into app settings through the
-   existing settings flow before trying a real hotkey-driven dictation run.
+   existing settings flow or settings JSON before trying a real hotkey-driven
+   dictation run.
 3. Grant microphone permission to the app when macOS or Windows prompts for it.
-4. Use the configured global hotkey to start and stop recording.
+4. On macOS, also grant Accessibility permission if paste automation is blocked
+   by `System Events`.
+5. Use the configured global hotkey to start and stop recording while another
+   text-capable app has focus.
 
 Expected outcome with valid configuration:
 
 - Press starts recording.
 - Release stops recording.
 - Status advances through recording and transcribing.
+- The previous target app is reactivated and receives the paste attempt.
 - The last transcript becomes visible in the app status surface.
 
 Expected outcome with missing provider configuration:
@@ -231,6 +259,12 @@ Expected outcome with missing provider configuration:
 - Runtime status reports actionable recovery text for the missing binary or
   model path.
 
+Expected outcome with paste automation failure:
+
+- Transcription still completes.
+- Recovery status reports the paste failure.
+- The transcript remains on the clipboard for manual paste.
+
 ## Implementation Constraints
 
 - `verboscribe-core` must remain platform-neutral.
@@ -238,11 +272,16 @@ Expected outcome with missing provider configuration:
 - The live CPAL stream must not be stored directly in shared app-service state.
   `CpalAudioRecorder` uses a thread-backed recording controller because the
   live stream ownership is not a clean shared-state fit on macOS.
+- Platform-specific target tracking and paste logic belongs in
+  `verboscribe-platform`, not in `verboscribe-core` or Tauri commands.
 - Hotkey normalization for user-facing settings strings is separate from plugin
   accelerator syntax.
-- The current app-service inserter is intentionally a no-op preview endpoint so
-  Sprint 6 could stop at transcript capture without pretending paste automation
-  exists.
+- Platform automation commands must remain timeout-guarded so permission or
+  accessibility failures surface as typed recovery instead of hanging the
+  dictation flow.
+- `TargetApp.identifier` now carries platform-specific target references such as
+  macOS bundle identifiers or Windows window handles. Preserve that boundary if
+  new target-aware features are added.
 
 ## Implemented vs Remaining
 
@@ -253,19 +292,21 @@ Implemented:
 - live microphone capture adapter
 - global hotkey registration and pressed or released event handling
 - app-service runtime status and recovery reporting
-- real hotkey-to-transcript app-service flow
+- platform target tracking
+- clipboard-first paste insertion
+- real hotkey-to-paste app-service flow
 
 Implemented but not manually verified on real desktops:
 
-- full hotkey-to-transcript live dictation flow
+- full hotkey-to-paste live dictation flow
 - live microphone permissions and device behavior
 - global hotkey registration conflict behavior
+- macOS Accessibility-denied paste fallback behavior
+- Windows target activation and paste behavior
 
 Not implemented:
 
-- clipboard insertion
-- target-app tracking
-- Windows paste/target tracking adapter decisions
+- Linux clipboard and paste automation
 - Windows CI
 - packaging, signing, installers, and release distribution
 
@@ -301,44 +342,50 @@ The smoke script uses environment overrides if paths differ:
 
 ## Known Gaps And Risks
 
-- Clipboard paste insertion and target app tracking are not implemented yet.
-- Windows-specific paste/target tracking still needs a spike.
 - Tauri app has not been launched or manually QA'd; only builds/tests have run.
 - `dist/`, packaging, signing, and installer workflows are not built yet.
 - Live recording still needs manual OS QA on macOS and Windows.
 - Global hotkey registration still needs manual OS QA on macOS and Windows.
-- The live dictation flow currently ends at transcript capture inside the app.
+- Paste insertion still needs manual OS QA on macOS and Windows.
+- macOS paste automation may require Accessibility permission and should be
+  expected to fail clearly when it is denied.
+- The first Windows adapter is implemented but unverified and may need to move
+  to direct Rust Win32 calls if PowerShell or `SendKeys` prove unreliable.
+- Linux clipboard and paste automation are not implemented.
 - Windows CI is still deferred.
 
 ## Next Recommended Work
 
-Start Sprint 7. Recommended focus:
+Start Sprint 8. Recommended focus:
 
-1. Implement clipboard insertion plus target-app tracking so the captured
-   transcript can leave VerboScribe 2 and reach the user’s original text field.
-2. Add a narrow app-service smoke path around the real dictation cycle when a
-   deterministic recorder strategy is available.
-3. Add a Windows CI job once the desktop/audio path is stable enough that the
-   extra platform gate improves signal more than it adds maintenance cost.
-4. Run manual recording QA on macOS and Windows before relying on live capture
-   for further vertical-slice work.
+1. Implement `VS2-016: App-Service Dictation Smoke Path` so success and
+   paste-failure flows can be checked without the live microphone.
+2. Run manual QA on macOS for end-to-end recording, target capture, paste
+   insertion, clipboard fallback, microphone permission, and Accessibility
+   failure behavior.
+3. Run manual QA on Windows for target activation and paste behavior before
+   relying on the first adapter design.
+4. Add a Windows CI job once the desktop/audio/platform path is stable enough
+   that the extra platform gate improves signal more than it adds maintenance
+   cost.
 
 Exact next story candidate:
 
-- `VS2-009: Clipboard Paste Insertion`
+- `VS2-016: App-Service Dictation Smoke Path`
 
-Recommended companion research or dependency:
+Recommended follow-up if Windows QA is weak:
 
-- `SPIKE-002: Windows Paste And Target Tracking`
+- `RA-012`: evaluate direct Rust Win32 input and activation instead of the
+  PowerShell path.
 
 ## User/Manual QA Needed
 
 Manual recording QA is now needed for:
 
-- full hotkey-to-transcript flow with valid local `whisper.cpp` paths
+- full hotkey-to-paste flow with valid local `whisper.cpp` paths
 - live microphone capture
 - global hotkey registration
-- text insertion
+- text insertion and clipboard fallback
 - tray/menu-bar behavior
 - launch-at-login
 - packaged app permissions

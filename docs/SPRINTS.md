@@ -984,6 +984,7 @@ Backlog changes:
 - VS2-009 moved to Done.
 - VS2-013 moved to Done.
 - SPIKE-002 moved to Done.
+- VS2-016 added as Ready for the next app-service smoke-path slice.
 
 User review:
 
