@@ -11,6 +11,13 @@ VerboScribe 2 will use a lightweight Scrum/Kanban hybrid:
 - Bugs are defects in accepted behavior.
 - Chores cover tooling, documentation, CI, packaging, and maintenance.
 
+Branching follows `docs/GIT_WORKFLOW.md`:
+
+- `main` stays releasable.
+- Work happens in short-lived feature/fix/spike branches.
+- Parallel AI work uses separate branches or worktrees.
+- Sprint completion can be tagged.
+
 Because the development team is AI-assisted, most planning and execution should
 be autonomous. The user should only need to make product tradeoff decisions,
 approve large scope changes, provide credentials/hardware access, and perform
@@ -69,6 +76,7 @@ Subagent rules:
 - Avoid overlapping write scopes.
 - Review and integrate every subagent result before accepting it.
 - Keep the main branch of work focused on the sprint goal.
+- Use branch boundaries as coordination boundaries when parallelizing work.
 
 ## Backlog Management
 

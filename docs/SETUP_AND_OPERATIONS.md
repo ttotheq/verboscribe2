@@ -40,6 +40,15 @@ installed:
 ./scripts/smoke-whisper-cpp.sh
 ```
 
+Local fixture smoke harness:
+
+```sh
+./scripts/smoke-local-fixtures.sh
+```
+
+See [PLATFORM_SMOKE.md](PLATFORM_SMOKE.md) for automated and manual platform
+smoke coverage.
+
 ## Local Whisper
 
 The first local provider will shell out to `whisper.cpp`. Expected settings:
@@ -51,6 +60,25 @@ The first local provider will shell out to `whisper.cpp`. Expected settings:
 
 The provider should support both macOS and Windows paths and return clear errors
 for missing or non-executable binaries and missing models.
+
+## Local Settings
+
+The app stores non-secret settings in a local JSON file:
+
+- macOS: `~/Library/Application Support/VerboScribe 2/settings.json`
+- Windows: `%APPDATA%\VerboScribe 2\settings.json`
+- Linux/dev fallback: `$XDG_CONFIG_HOME/VerboScribe 2/settings.json` or
+  `~/.config/VerboScribe 2/settings.json`
+
+Current defaults:
+
+- Provider: `whisper.cpp`
+- Language: `en`
+- Dictation mode: press and hold
+- Minimum recording length: `1000` ms
+- Dictation hotkey: `Control+Option+Space`
+- `whisper.cpp` binary path: unset
+- `whisper.cpp` model path: unset
 
 ## Secrets
 

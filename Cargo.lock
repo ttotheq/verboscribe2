@@ -3765,6 +3765,10 @@ dependencies = [
 name = "verboscribe-storage"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
  "verboscribe-core",
 ]
 
@@ -3783,7 +3787,9 @@ dependencies = [
  "serde",
  "tauri",
  "tauri-build",
+ "tempfile",
  "verboscribe-core",
+ "verboscribe-storage",
 ]
 
 [[package]]

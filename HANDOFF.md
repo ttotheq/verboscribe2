@@ -1,6 +1,6 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-05-02, after Sprint 2 closeout and handoff documentation.
+Last updated: 2026-05-02, after Sprint 3 closeout.
 
 ## Resume First
 
@@ -16,14 +16,14 @@ If working on the local `whisper.cpp` provider and the local binary/model/sample
 are still installed, also run:
 
 ```sh
-./scripts/smoke-whisper-cpp.sh
+./scripts/smoke-local-fixtures.sh
 ```
 
 Expected current result:
 
 - `cargo fmt --all -- --check` passes.
 - `./scripts/verify.sh` passes.
-- `./scripts/smoke-whisper-cpp.sh` passes on this machine and prints:
+- `./scripts/smoke-local-fixtures.sh` passes on this machine and includes:
   `And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.`
 
 ## Current Project State
@@ -46,16 +46,26 @@ read-only. Do not modify it. Product/behavior notes are captured in
 Current agile process:
 
 - Follow `docs/AGILE_OPERATING_MODEL.md`.
+- Follow `docs/GIT_WORKFLOW.md`.
 - Keep `docs/BACKLOG.md`, `docs/SPRINTS.md`, and this handoff current.
 - Every sprint must close with full review, retrospective, and retro actions.
+
+Git workflow status:
+
+- `main` is the releasable trunk.
+- Short-lived branches are the default for nontrivial work.
+- Use `feature/*`, `fix/*`, and `spike/*` branches for focused slices.
+- Use `git worktree` when parallel AI work would otherwise collide.
+- Tag sprint completions or release checkpoints when useful.
+
+Current branch:
+
+- `feature/vs2-010-settings-store`
 
 Completed:
 
 - Sprint 1: Foundation To Testable Core.
 - Sprint 2: Local Audio And Transcription Slice.
-
-Planned next sprint:
-
 - Sprint 3: App-Service Integration And Recovery.
 
 Sprint 3 goal:
@@ -63,12 +73,11 @@ Sprint 3 goal:
 Turn the tested provider/audio pieces into an app-service workflow with settings
 and status/recovery events, while preparing for real platform adapters.
 
-Sprint 3 candidate items:
+Sprint 3 completed items:
 
 - VS2-011: Runtime Status And Recovery Events.
 - VS2-010: Minimal Settings Store.
 - VS2-012: Platform Smoke Harness.
-- VS2-013: Clipboard Safety Contract.
 
 ## Completed Implementation
 
@@ -92,6 +101,12 @@ Core:
   raw-first defaults, snippets, personal dictionary prompt hints, spoken
   commands, cleanup levels, and style presets.
 
+Storage:
+
+- `crates/verboscribe-storage/src/lib.rs`: typed `AppSettings`, local JSON
+  `JsonSettingsStore`, defaults for provider/language/mode/hotkey, and
+  conversion to core `DictationConfig`.
+
 Transcription:
 
 - `WhisperCppTranscriber` in `crates/verboscribe-transcription/src/lib.rs`.
@@ -114,7 +129,8 @@ Audio:
 Tauri boundary:
 
 - `apps/desktop/src-tauri/src/app_service.rs`: Tauri-free app service with typed
-  DTOs and a dry-run dictation flow through the core engine.
+  DTOs, settings load/save, runtime status/recovery events, and a dry-run
+  dictation flow through the core engine.
 - `apps/desktop/src-tauri/src/commands.rs`: Tauri command adapters.
 - `apps/desktop/src-tauri/src/lib.rs`: wires managed `AppService` and command
   handlers.
@@ -130,6 +146,10 @@ Docs/process:
 - `docs/SPIKES.md`: spike decisions.
 - `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`, `docs/MANUAL_QA.md`,
   `docs/SETUP_AND_OPERATIONS.md`.
+- `docs/PLATFORM_SMOKE.md`: automated local fixture smoke and pending
+  macOS/Windows manual smoke checklist.
+- `scripts/smoke-local-fixtures.sh`: local WAV validation plus `whisper.cpp`
+  provider fixture smoke.
 
 ## Important Decisions
 
@@ -166,27 +186,34 @@ The smoke script uses environment overrides if paths differ:
 - Live microphone capture is not implemented yet.
 - Global hotkeys are not implemented yet.
 - Clipboard paste insertion and target app tracking are not implemented yet.
-- Settings persistence is not implemented yet.
-- Runtime status/recovery event model is not implemented yet.
 - Windows-specific paste/target tracking still needs a spike.
 - Tauri app has not been launched or manually QA'd; only builds/tests have run.
 - `dist/`, packaging, signing, and installer workflows are not built yet.
 
 ## Next Recommended Work
 
-Start Sprint 3. Recommended order:
+Start Sprint 4. Recommended focus:
 
-1. Run the resume commands above.
-2. Mark Sprint 3 `Status: Active` in `docs/SPRINTS.md`.
-3. Implement VS2-010 Minimal Settings Store first, because provider paths and
-   language will be needed by app-service workflows.
-4. Implement VS2-011 Runtime Status And Recovery Events around the existing
-   `AppService`.
-5. Implement VS2-012 Platform Smoke Harness by adding scripts/docs for:
-   local provider smoke, WAV validation, and later hotkey/paste checks.
-6. Keep VS2-014 Live Microphone Capture separate from WAV utilities.
-7. Before closing Sprint 3, run the full closeout checklist in
-   `docs/AGILE_OPERATING_MODEL.md`.
+1. Choose the next vertical-slice adapter story. Recommended first item:
+   VS2-014 Live Microphone Capture Adapter, because recording is the next
+   missing piece before hotkey/paste integration.
+2. Keep platform-specific capture code outside `verboscribe-core`.
+3. Attach manual QA notes before implementing platform adapters.
+4. Use a sprint-level branch name if the sprint will cover multiple stories.
+
+Sprint 3 verification on `feature/vs2-010-settings-store`:
+
+- `git status --short --branch` showed existing documentation edits carried
+  forward from `main`.
+- `cargo fmt --all -- --check` passed.
+- `./scripts/verify.sh` passed.
+- `./scripts/smoke-whisper-cpp.sh` passed and produced the expected JFK sample
+  transcript.
+- After VS2-010, `cargo fmt --all -- --check` passed and
+  `./scripts/verify.sh` passed.
+- After VS2-011, `cargo fmt --all -- --check` passed and
+  `./scripts/verify.sh` passed.
+- `./scripts/smoke-local-fixtures.sh` passed.
 
 ## User/Manual QA Needed
 
@@ -210,3 +237,4 @@ Before ending any future session:
 - Record verification results here.
 - Record any blockers, risks, and next actions here.
 - If a sprint ended, include review, retro, and retro actions.
+- Record the branch name and merge status if the work happened off `main`.

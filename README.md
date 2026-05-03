@@ -32,9 +32,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 
 ## Current Status
 
-Sprint 1 is complete. The repository has the planned documentation, a Rust
+Sprint 3 is complete. The repository has the planned documentation, a Rust
 workspace, a Tauri desktop shell, a tested platform-neutral dictation engine,
-ported transcript processing behavior, and a minimal status UI.
+ported transcript processing behavior, local WAV and `whisper.cpp` fixture
+checks, a minimal settings store, and app-service status/recovery events.
 
 Verification:
 

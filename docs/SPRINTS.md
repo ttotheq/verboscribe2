@@ -300,15 +300,18 @@ Improvement actions:
 
 ## Sprint 3: App-Service Integration And Recovery
 
-Status: Planned  
+Status: Done  
 Goal: Turn the tested provider/audio pieces into an app-service workflow with
 settings and status/recovery events, while preparing for real platform adapters.
 
+### Committed Items
+
+- VS2-010: Minimal Settings Store
+- VS2-011: Runtime Status And Recovery Events
+- VS2-012: Platform Smoke Harness
+
 ### Candidate Items
 
-- VS2-011: Runtime Status And Recovery Events
-- VS2-010: Minimal Settings Store
-- VS2-012: Platform Smoke Harness
 - VS2-013: Clipboard Safety Contract
 
 ### Definition Of Done
@@ -317,3 +320,119 @@ settings and status/recovery events, while preparing for real platform adapters.
 - Minimal settings persist provider paths, language, mode, and hotkey defaults.
 - Smoke harness documents/runs local provider and WAV validation checks.
 - Verification remains green.
+
+### Sprint Start Notes
+
+- Started on branch `feature/vs2-010-settings-store`.
+- Baseline verification passed: `cargo fmt --all -- --check`,
+  `./scripts/verify.sh`, and `./scripts/smoke-whisper-cpp.sh`.
+- Begin with VS2-010 so provider paths and language settings are available
+  before app-service recovery/status wiring.
+
+### Execution Notes
+
+- VS2-010 complete: `verboscribe-storage` now has a typed settings model,
+  JSON file-backed store, documented local settings paths/defaults, and tests
+  for defaults, persistence, invalid JSON, and conversion to core dictation
+  config.
+- The Tauri app service now exposes settings load/save commands and reads
+  provider/hotkey status from the settings store.
+- Verification after VS2-010: `cargo fmt --all -- --check` passed and
+  `./scripts/verify.sh` passed.
+- VS2-011 complete: the app service now exposes runtime status events, dry-run
+  dictation event sequences, and recovery DTOs for permission, recording,
+  transcription, paste, and empty-transcript failures.
+- Paste recovery events preserve the transcript for manual recovery, and
+  microphone permission recovery includes platform-specific next-step text.
+- Verification after VS2-011: `cargo fmt --all -- --check` passed and
+  `./scripts/verify.sh` passed.
+- VS2-012 complete: added `scripts/smoke-local-fixtures.sh` and
+  `docs/PLATFORM_SMOKE.md` to run local WAV/provider fixture checks and track
+  macOS/Windows manual smoke gaps for hotkeys, target tracking, clipboard, and
+  paste fallback.
+- Local fixture smoke `./scripts/smoke-local-fixtures.sh` passed.
+
+### Sprint Review
+
+Increment delivered:
+
+- Minimal settings store with typed defaults, JSON persistence, and conversion
+  to core dictation config.
+- Tauri app-service commands for settings load/save.
+- Runtime status and recovery event DTOs around the app service.
+- Dry-run dictation event sequence covering idle, recording, transcribing, and
+  success states.
+- Recovery mapping for permission, recording, transcription, paste, and
+  empty-transcript failures.
+- Local platform smoke harness and macOS/Windows manual smoke checklist.
+
+Acceptance criteria passed:
+
+- Settings model persists provider paths, language, mode, minimum recording
+  length, and hotkey defaults.
+- Defaults are documented in setup/operations docs and covered by tests.
+- App service exposes status/recovery state for provider/audio/paste-class
+  failures.
+- Paste failure events preserve transcript text for manual recovery.
+- Permission failures include platform-specific next-step text.
+- Smoke harness covers local provider and WAV validation checks.
+- Verification remains green.
+
+Blocked or deferred:
+
+- Live microphone capture remains deferred to VS2-014.
+- Global hotkeys, target tracking, clipboard write, and paste fallback remain
+  manual checklist placeholders until platform adapters exist.
+
+Backlog changes:
+
+- VS2-010, VS2-011, and VS2-012 moved to Done.
+- VS2-013 remains in Backlog.
+
+User review:
+
+- No manual OS testing is required yet because no live microphone, hotkey,
+  target tracking, or paste adapter was implemented.
+- The local fixture smoke can be rerun with
+  `./scripts/smoke-local-fixtures.sh`.
+
+Verification:
+
+- `cargo fmt --all -- --check` passed.
+- `./scripts/verify.sh` passed.
+- `./scripts/smoke-local-fixtures.sh` passed.
+
+### Retrospective
+
+What worked:
+
+- Starting with settings gave the app-service layer concrete provider, language,
+  mode, and hotkey data to report.
+- Keeping settings in `verboscribe-storage` preserved the platform-neutral core
+  boundary.
+- Runtime recovery mapping was testable without waiting for real OS adapters.
+- The smoke harness made the local fixture checks repeatable instead of relying
+  on handoff notes.
+
+What slowed us down:
+
+- The feature branch name was scoped to VS2-010 even though the sprint continued
+  through VS2-011 and VS2-012.
+- Formatting checks caught several long Rust lines after patching instead of
+  during the edit.
+
+What should change next sprint:
+
+- Use a sprint-level branch name when continuing through multiple committed
+  stories in one work session.
+- Run `cargo fmt --all` immediately after larger Rust patches, then
+  `cargo fmt --all -- --check` before verification.
+- Add platform adapter stories only with explicit manual QA notes attached.
+
+Improvement actions:
+
+| ID | Action | Owner | Target | Status |
+| --- | --- | --- | --- | --- |
+| RA-005 | Run Rust formatting checks before final verification. | Lead AI | Sprint 3 execution | Done |
+| RA-007 | Use sprint-level branch names when implementing multiple stories together. | Lead AI | Sprint 4 planning | Open |
+| RA-008 | Attach manual QA notes to every platform adapter story before implementation. | Lead AI | Sprint 4 planning | Open |

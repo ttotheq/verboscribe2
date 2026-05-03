@@ -6,6 +6,7 @@ Start every new Codex session by reading:
 2. `docs/SPRINTS.md`
 3. `docs/BACKLOG.md`
 4. `docs/ARCHITECTURE.md`
+5. `docs/GIT_WORKFLOW.md`
 
 `HANDOFF.md` is the durable continuation brief for closed sessions, laptop
 reboots, or context loss. Treat it as the source of truth for current status,
@@ -14,6 +15,7 @@ open sprint work, verification commands, and the next recommended actions.
 ## Working Style
 
 - Follow the agile operating model in `docs/AGILE_OPERATING_MODEL.md`.
+- Follow the git workflow in `docs/GIT_WORKFLOW.md`.
 - Be proactive and autonomous.
 - Run the full sprint loop: planning, execution, review, retrospective, and
   retro actions.
@@ -49,3 +51,4 @@ Before pausing, closing a session, or after completing a sprint, update
 - blockers/risks
 - next recommended actions
 - any user/manual QA needed
+- branch name or merge status if work happened on a branch

@@ -3,7 +3,7 @@ import "./styles.css";
 
 type StatusModel = {
   appStatus: string;
-  engineState: "Idle" | "Recording" | "Transcribing";
+  engineState: "Idle" | "Starting" | "Recording" | "Transcribing" | "Succeeded" | "Failed";
   provider: string;
   hotkey: string;
   recovery: string;

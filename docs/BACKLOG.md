@@ -116,8 +116,6 @@ Acceptance criteria:
 
 Status: Done
 
-## Ready
-
 ### VS2-011: Runtime Status And Recovery Events
 
 Type: Story  
@@ -132,7 +130,7 @@ Acceptance criteria:
 - Permission failures include platform-specific next-step text at the adapter
   boundary.
 
-Status: Ready
+Status: Done
 
 ### VS2-012: Platform Smoke Harness
 
@@ -146,7 +144,7 @@ Acceptance criteria:
   hotkey registration, target tracking, clipboard write, and paste fallback.
 - macOS and Windows gaps are tracked separately.
 
-Status: Ready
+Status: Done
 
 ### VS2-010: Minimal Settings Store
 
@@ -159,7 +157,7 @@ Acceptance criteria:
 - Settings persist locally.
 - Defaults are documented and test-covered.
 
-Status: Ready
+Status: Done
 
 ## Backlog
 
