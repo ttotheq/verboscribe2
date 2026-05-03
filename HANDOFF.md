@@ -60,7 +60,11 @@ Git workflow status:
 
 Current branch:
 
-- `feature/sprint-4-live-capture`
+- `main`
+
+Recent merge status:
+
+- `feature/sprint-4-live-capture` merged into `main`
 
 Completed:
 
