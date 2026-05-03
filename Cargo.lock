@@ -4083,8 +4083,10 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-global-shortcut",
  "tempfile",
+ "verboscribe-audio",
  "verboscribe-core",
  "verboscribe-storage",
+ "verboscribe-transcription",
 ]
 
 [[package]]

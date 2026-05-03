@@ -30,6 +30,21 @@ pub fn dry_run_dictation_events(
 }
 
 #[tauri::command]
+pub fn start_dictation(service: State<'_, AppService>) -> Result<DictationStatusDto, String> {
+    service.start_dictation()
+}
+
+#[tauri::command]
+pub fn stop_dictation(service: State<'_, AppService>) -> Result<DictationStatusDto, String> {
+    service.stop_dictation()
+}
+
+#[tauri::command]
+pub fn cancel_dictation(service: State<'_, AppService>) -> Result<DictationStatusDto, String> {
+    service.cancel_dictation()
+}
+
+#[tauri::command]
 pub fn settings(service: State<'_, AppService>) -> Result<SettingsDto, String> {
     service.settings()
 }

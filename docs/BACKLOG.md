@@ -217,6 +217,23 @@ Acceptance criteria:
 
 Status: Backlog
 
+### VS2-015: App-Service Live Dictation Flow
+
+Type: Story  
+Epic: EPIC-04A  
+User value: The desktop shell can run a real dictation cycle from hotkey event
+to local transcript without waiting for clipboard automation.  
+Acceptance criteria:
+
+- App service can start and stop a real dictation run with the live recorder.
+- Hotkey pressed and released events drive the app-service dictation flow.
+- Missing provider configuration surfaces actionable recovery text.
+- Last transcript and active dictation state are visible through existing status
+  commands.
+- Manual QA impact is documented.
+
+Status: Done
+
 ## Spikes
 
 ### SPIKE-002: Windows Paste And Target Tracking

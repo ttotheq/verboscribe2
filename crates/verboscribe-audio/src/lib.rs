@@ -3,7 +3,8 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{mpsc, Arc, Mutex},
+    thread,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -59,7 +60,7 @@ enum RecorderState {
 }
 
 struct RecordingSession {
-    stream: Box<dyn ActiveInputStream>,
+    controller: Box<dyn RecordingController + Send>,
     started_at: Instant,
     capture_config: CaptureConfig,
     samples: Arc<Mutex<Vec<f32>>>,
@@ -72,17 +73,40 @@ struct CaptureConfig {
     channels: u16,
 }
 
-trait ActiveInputStream {
-    fn stop(self: Box<Self>);
+trait RecordingController {
+    fn stop(self: Box<Self>) -> Result<(), DictationError>;
+    fn cancel(self: Box<Self>) -> Result<(), DictationError>;
 }
 
-struct CpalActiveInputStream {
-    stream: cpal::Stream,
+struct ThreadedRecordingController {
+    command_tx: mpsc::Sender<RecorderThreadCommand>,
+    join_handle: thread::JoinHandle<()>,
 }
 
-impl ActiveInputStream for CpalActiveInputStream {
-    fn stop(self: Box<Self>) {
-        let _ = self.stream.pause();
+enum RecorderThreadCommand {
+    Stop,
+    Cancel,
+}
+
+impl RecordingController for ThreadedRecordingController {
+    fn stop(self: Box<Self>) -> Result<(), DictationError> {
+        self.command_tx
+            .send(RecorderThreadCommand::Stop)
+            .map_err(|_| {
+                DictationError::Recording("recording thread stopped unexpectedly".to_string())
+            })?;
+        self.join_handle
+            .join()
+            .map_err(|_| DictationError::Recording("recording thread panicked".to_string()))?;
+        Ok(())
+    }
+
+    fn cancel(self: Box<Self>) -> Result<(), DictationError> {
+        let _ = self.command_tx.send(RecorderThreadCommand::Cancel);
+        self.join_handle
+            .join()
+            .map_err(|_| DictationError::Recording("recording thread panicked".to_string()))?;
+        Ok(())
     }
 }
 
@@ -119,11 +143,7 @@ impl CpalAudioRecorder {
             .map_err(map_default_input_config_error)
     }
 
-    fn begin_session(
-        &self,
-        device: cpal::Device,
-        config: cpal::SupportedStreamConfig,
-    ) -> Result<RecordingSession, DictationError> {
+    fn begin_session(&self) -> Result<RecordingSession, DictationError> {
         fs::create_dir_all(&self.output_dir).map_err(|source| {
             DictationError::Recording(
                 AudioError::CreateDirectory {
@@ -135,17 +155,37 @@ impl CpalAudioRecorder {
         })?;
 
         let samples = Arc::new(Mutex::new(Vec::new()));
-        let capture_config = CaptureConfig {
-            path: next_recording_path(&self.output_dir),
-            sample_rate: config.sample_rate().0,
-            channels: config.channels(),
-        };
-
-        let stream = build_input_stream(device, &config, Arc::clone(&samples))?;
-        stream.play().map_err(map_play_stream_error)?;
+        let path = next_recording_path(&self.output_dir);
+        let (command_tx, command_rx) = mpsc::channel();
+        let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+        let thread_samples = Arc::clone(&samples);
+        let thread_path = path.clone();
+        let join_handle = thread::spawn(move || {
+            let ready = setup_recording_thread(thread_samples, thread_path);
+            match ready {
+                Ok((capture_config, stream)) => {
+                    let _ = ready_tx.send(Ok(capture_config));
+                    match command_rx.recv() {
+                        Ok(RecorderThreadCommand::Stop) => {
+                            let _ = stream.pause();
+                        }
+                        Ok(RecorderThreadCommand::Cancel) | Err(_) => {}
+                    }
+                }
+                Err(error) => {
+                    let _ = ready_tx.send(Err(error));
+                }
+            }
+        });
+        let capture_config = ready_rx.recv().map_err(|_| {
+            DictationError::Recording("recording thread exited before setup".to_string())
+        })??;
 
         Ok(RecordingSession {
-            stream: Box::new(CpalActiveInputStream { stream }),
+            controller: Box::new(ThreadedRecordingController {
+                command_tx,
+                join_handle,
+            }),
             started_at: Instant::now(),
             capture_config,
             samples,
@@ -167,9 +207,8 @@ impl AudioRecorder for CpalAudioRecorder {
             ));
         }
 
-        let device = self.default_input_device()?;
-        let config = self.supported_input_config(&device)?;
-        let session = self.begin_session(device, config)?;
+        self.request_permission()?;
+        let session = self.begin_session()?;
         self.state = RecorderState::Recording(session);
         Ok(())
     }
@@ -185,12 +224,12 @@ impl AudioRecorder for CpalAudioRecorder {
         };
 
         let RecordingSession {
-            stream,
+            controller,
             started_at,
             capture_config,
             samples,
         } = session;
-        stream.stop();
+        controller.stop()?;
 
         let captured_samples = samples
             .lock()
@@ -228,7 +267,7 @@ impl AudioRecorder for CpalAudioRecorder {
         if let RecorderState::Recording(session) =
             std::mem::replace(&mut self.state, RecorderState::Idle)
         {
-            session.stream.stop();
+            let _ = session.controller.cancel();
         }
     }
 }
@@ -352,6 +391,27 @@ fn build_input_stream(
             "unsupported input sample format: {unsupported:?}"
         ))),
     }
+}
+
+fn setup_recording_thread(
+    samples: Arc<Mutex<Vec<f32>>>,
+    path: PathBuf,
+) -> Result<(CaptureConfig, cpal::Stream), DictationError> {
+    let host = cpal::default_host();
+    let device = host.default_input_device().ok_or_else(|| {
+        DictationError::Recording("no default input device available".to_string())
+    })?;
+    let config = device
+        .default_input_config()
+        .map_err(map_default_input_config_error)?;
+    let capture_config = CaptureConfig {
+        path,
+        sample_rate: config.sample_rate().0,
+        channels: config.channels(),
+    };
+    let stream = build_input_stream(device, &config, samples)?;
+    stream.play().map_err(map_play_stream_error)?;
+    Ok((capture_config, stream))
 }
 
 fn append_f32_samples(shared: &Arc<Mutex<Vec<f32>>>, data: &[f32]) {
@@ -679,7 +739,7 @@ mod tests {
         channels: u16,
     ) -> RecordingSession {
         RecordingSession {
-            stream: Box::new(NoopStream),
+            controller: Box::new(NoopController),
             started_at: Instant::now(),
             capture_config: CaptureConfig {
                 path,
@@ -690,9 +750,15 @@ mod tests {
         }
     }
 
-    struct NoopStream;
+    struct NoopController;
 
-    impl ActiveInputStream for NoopStream {
-        fn stop(self: Box<Self>) {}
+    impl RecordingController for NoopController {
+        fn stop(self: Box<Self>) -> Result<(), DictationError> {
+            Ok(())
+        }
+
+        fn cancel(self: Box<Self>) -> Result<(), DictationError> {
+            Ok(())
+        }
     }
 }

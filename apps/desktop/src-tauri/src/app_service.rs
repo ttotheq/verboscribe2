@@ -4,14 +4,16 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use verboscribe_audio::CpalAudioRecorder;
 use verboscribe_core::{
-    AudioCapture, AudioRecorder, DictationConfig, DictationEngine, DictationError, DictationState,
-    ProcessedTranscript, TargetApp, TargetAppTracker, TextInsertionService, TranscriptProcessor,
-    TranscriptionProvider,
+    AudioCapture, AudioRecorder, DefaultTranscriptProcessor, DictationConfig, DictationEngine,
+    DictationError, DictationState, HotkeyEvent, ProcessedTranscript, TargetApp, TargetAppTracker,
+    TextInsertionService, TranscriptProcessingOptions, TranscriptProcessor, TranscriptionProvider,
 };
 use verboscribe_storage::{
     AppSettings, JsonSettingsStore, SettingsDictationMode, TranscriptionProviderKind,
 };
+use verboscribe_transcription::{WhisperCppConfig, WhisperCppTranscriber};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -82,10 +84,11 @@ impl From<AppSettings> for SettingsDto {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AppService {
     settings_store: JsonSettingsStore,
     hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
+    dictation_runtime: Arc<Mutex<DictationRuntimeState>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -121,11 +124,42 @@ struct HotkeyStatusSnapshot {
     registered: bool,
 }
 
+type DesktopDictationEngine = DictationEngine<
+    PassiveTargets,
+    CpalAudioRecorder,
+    WhisperCppTranscriber,
+    DefaultTranscriptProcessor,
+    PreviewInserter,
+>;
+
+#[derive(Default)]
+struct DictationRuntimeState {
+    engine: Option<DesktopDictationEngine>,
+    settings: Option<AppSettings>,
+    recovery: Option<RecoveryDto>,
+    last_transcript: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DictationStatusSnapshot {
+    state: DictationState,
+    recovery: Option<RecoveryDto>,
+    last_transcript: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ManualDictationAction {
+    Start,
+    Stop,
+    Cancel,
+}
+
 impl Default for AppService {
     fn default() -> Self {
         Self {
             settings_store: JsonSettingsStore::default_for_app("VerboScribe 2"),
             hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
+            dictation_runtime: Arc::new(Mutex::new(DictationRuntimeState::default())),
         }
     }
 }
@@ -136,6 +170,7 @@ impl AppService {
         Self {
             settings_store,
             hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
+            dictation_runtime: Arc::new(Mutex::new(DictationRuntimeState::default())),
         }
     }
 
@@ -149,19 +184,26 @@ impl AppService {
             ),
         };
         let hotkey_status = self.hotkey_status(&settings.hotkeys.dictation);
+        let dictation_status = self.dictation_status_snapshot();
         let recovery = hotkey_status
             .registration_error
             .as_ref()
             .map(|error| format!("Hotkey unavailable: {error}"))
+            .or_else(|| {
+                dictation_status
+                    .recovery
+                    .as_ref()
+                    .map(|error| format!("{}: {}", error.title, error.detail))
+            })
             .unwrap_or(recovery);
 
         AppStatusDto {
-            app_status: "Desktop shell ready".to_string(),
-            engine_state: state_label(DictationState::Idle).to_string(),
+            app_status: app_status_label(dictation_status.state).to_string(),
+            engine_state: state_label(dictation_status.state).to_string(),
             provider: settings.transcription.provider.label().to_string(),
             hotkey: format_hotkey_status(&hotkey_status),
             recovery,
-            last_transcript: String::new(),
+            last_transcript: dictation_status.last_transcript.unwrap_or_default(),
         }
     }
 
@@ -177,11 +219,49 @@ impl AppService {
         self.settings_store
             .save(&settings)
             .map_err(|error| error.to_string())?;
+        self.mutate_dictation_runtime(|runtime| {
+            let should_reset_engine = runtime
+                .engine
+                .as_ref()
+                .is_none_or(|engine| engine.state() == DictationState::Idle);
+            if should_reset_engine {
+                runtime.engine = None;
+                runtime.settings = None;
+                runtime.recovery = None;
+            }
+        });
         Ok(SettingsDto::from(settings))
     }
 
     pub fn runtime_status(&self) -> RuntimeEventDto {
-        status_event("idle", "Ready for dictation", None)
+        let status = self.dictation_status_snapshot();
+        if let Some(recovery) = status.recovery {
+            return RuntimeEventDto {
+                phase: "failed".to_string(),
+                message: recovery.title.clone(),
+                recovery: Some(recovery),
+                transcript: status.last_transcript,
+            };
+        }
+
+        match status.state {
+            DictationState::Idle => {
+                if status.last_transcript.is_some() {
+                    status_event(
+                        "succeeded",
+                        "Last dictation captured",
+                        status.last_transcript,
+                    )
+                } else {
+                    status_event("idle", "Ready for dictation", None)
+                }
+            }
+            DictationState::Starting => status_event("starting", "Preparing dictation", None),
+            DictationState::Recording => status_event("recording", "Recording audio", None),
+            DictationState::Transcribing => {
+                status_event("transcribing", "Transcribing audio", None)
+            }
+        }
     }
 
     pub fn dry_run_dictation_events(&self) -> Result<Vec<RuntimeEventDto>, String> {
@@ -239,6 +319,142 @@ impl AppService {
             state: state_label(engine.state()).to_string(),
             last_transcript: engine.last_transcript().map(ToString::to_string),
         })
+    }
+
+    pub fn start_dictation(&self) -> Result<DictationStatusDto, String> {
+        self.drive_manual_dictation(ManualDictationAction::Start)
+    }
+
+    pub fn stop_dictation(&self) -> Result<DictationStatusDto, String> {
+        self.drive_manual_dictation(ManualDictationAction::Stop)
+    }
+
+    pub fn cancel_dictation(&self) -> Result<DictationStatusDto, String> {
+        self.drive_manual_dictation(ManualDictationAction::Cancel)
+    }
+
+    pub fn handle_hotkey_event(
+        &self,
+        event: HotkeyEventState,
+    ) -> Result<DictationStatusDto, String> {
+        self.record_hotkey_event(event);
+        let event = match event {
+            HotkeyEventState::Pressed => HotkeyEvent::Pressed,
+            HotkeyEventState::Released => HotkeyEvent::Released,
+        };
+
+        self.drive_dictation(|engine| engine.hotkey(event))
+    }
+
+    fn dictation_status_snapshot(&self) -> DictationStatusSnapshot {
+        self.with_dictation_runtime(|runtime| DictationStatusSnapshot {
+            state: runtime
+                .engine
+                .as_ref()
+                .map(|engine| engine.state())
+                .unwrap_or(DictationState::Idle),
+            recovery: runtime.recovery.clone(),
+            last_transcript: runtime.last_transcript.clone(),
+        })
+    }
+
+    fn drive_manual_dictation(
+        &self,
+        action: ManualDictationAction,
+    ) -> Result<DictationStatusDto, String> {
+        match action {
+            ManualDictationAction::Start => self.drive_dictation(|engine| engine.start_recording()),
+            ManualDictationAction::Stop => {
+                self.drive_dictation(|engine| engine.stop_transcribe_insert())
+            }
+            ManualDictationAction::Cancel => {
+                self.mutate_dictation_runtime(|runtime| {
+                    if let Some(engine) = runtime.engine.as_mut() {
+                        engine.cancel();
+                    }
+                    runtime.recovery = None;
+                });
+                Ok(self.current_dictation_status())
+            }
+        }
+    }
+
+    fn drive_dictation(
+        &self,
+        run: impl FnOnce(&mut DesktopDictationEngine) -> Result<(), DictationError>,
+    ) -> Result<DictationStatusDto, String> {
+        let settings = self
+            .settings_store
+            .load_or_create()
+            .map_err(|error| error.to_string())?;
+
+        let result = self.mutate_dictation_runtime_result(|runtime| {
+            if let Err(error) = Self::ensure_dictation_engine(runtime, &settings) {
+                runtime.recovery = Some(recovery_for_error(&error, current_recovery_platform()));
+                return Err(error);
+            }
+            let engine = runtime
+                .engine
+                .as_mut()
+                .expect("dictation engine should exist after successful setup");
+
+            match run(engine) {
+                Ok(()) => {
+                    runtime.recovery = None;
+                    runtime.last_transcript = engine.last_transcript().map(ToString::to_string);
+                    Ok(())
+                }
+                Err(error) => {
+                    runtime.recovery =
+                        Some(recovery_for_error(&error, current_recovery_platform()));
+                    runtime.last_transcript = engine.last_transcript().map(ToString::to_string);
+                    Err(error)
+                }
+            }
+        });
+
+        match result {
+            Ok(()) => Ok(self.current_dictation_status()),
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    fn ensure_dictation_engine(
+        runtime: &mut DictationRuntimeState,
+        settings: &AppSettings,
+    ) -> Result<(), DictationError> {
+        let should_rebuild = runtime.engine.is_none()
+            || (runtime.engine.as_ref().map(|engine| engine.state()) == Some(DictationState::Idle)
+                && runtime.settings.as_ref() != Some(settings));
+
+        if should_rebuild {
+            runtime.engine = Some(Self::build_desktop_engine(settings)?);
+            runtime.settings = Some(settings.clone());
+            runtime.recovery = None;
+        }
+
+        Ok(())
+    }
+
+    fn build_desktop_engine(
+        settings: &AppSettings,
+    ) -> Result<DesktopDictationEngine, DictationError> {
+        Ok(DictationEngine::new(
+            settings.dictation_config(),
+            PassiveTargets,
+            CpalAudioRecorder::new(std::env::temp_dir().join("verboscribe2").join("recordings")),
+            build_transcriber(settings)?,
+            DefaultTranscriptProcessor::new(TranscriptProcessingOptions::default()),
+            PreviewInserter,
+        ))
+    }
+
+    fn current_dictation_status(&self) -> DictationStatusDto {
+        let status = self.dictation_status_snapshot();
+        DictationStatusDto {
+            state: state_label(status.state).to_string(),
+            last_transcript: status.last_transcript,
+        }
     }
 
     fn fake_engine(
@@ -321,6 +537,31 @@ impl AppService {
             .expect("hotkey state lock poisoned");
         read(&state)
     }
+
+    fn mutate_dictation_runtime(&self, mutate: impl FnOnce(&mut DictationRuntimeState)) {
+        if let Ok(mut runtime) = self.dictation_runtime.lock() {
+            mutate(&mut runtime);
+        }
+    }
+
+    fn mutate_dictation_runtime_result<T>(
+        &self,
+        mutate: impl FnOnce(&mut DictationRuntimeState) -> Result<T, DictationError>,
+    ) -> Result<T, DictationError> {
+        let mut runtime = self
+            .dictation_runtime
+            .lock()
+            .expect("dictation runtime lock poisoned");
+        mutate(&mut runtime)
+    }
+
+    fn with_dictation_runtime<T>(&self, read: impl FnOnce(&DictationRuntimeState) -> T) -> T {
+        let runtime = self
+            .dictation_runtime
+            .lock()
+            .expect("dictation runtime lock poisoned");
+        read(&runtime)
+    }
 }
 
 impl TryFrom<SettingsDto> for AppSettings {
@@ -359,6 +600,15 @@ pub fn state_label(state: DictationState) -> &'static str {
         DictationState::Starting => "Starting",
         DictationState::Recording => "Recording",
         DictationState::Transcribing => "Transcribing",
+    }
+}
+
+fn app_status_label(state: DictationState) -> &'static str {
+    match state {
+        DictationState::Idle => "Ready for dictation",
+        DictationState::Starting => "Preparing dictation",
+        DictationState::Recording => "Recording audio",
+        DictationState::Transcribing => "Transcribing audio",
     }
 }
 
@@ -410,7 +660,18 @@ fn recovery_event(
     transcript: Option<String>,
     platform: RecoveryPlatform,
 ) -> RuntimeEventDto {
-    let recovery = match error {
+    let recovery = recovery_for_error(&error, platform);
+
+    RuntimeEventDto {
+        phase: "failed".to_string(),
+        message: recovery.title.clone(),
+        recovery: Some(recovery),
+        transcript,
+    }
+}
+
+fn recovery_for_error(error: &DictationError, platform: RecoveryPlatform) -> RecoveryDto {
+    match error {
         DictationError::MicrophonePermissionDenied => RecoveryDto {
             title: "Microphone permission required".to_string(),
             detail: "VerboScribe cannot record until microphone access is allowed.".to_string(),
@@ -418,7 +679,7 @@ fn recovery_event(
         },
         DictationError::Recording(message) => RecoveryDto {
             title: "Recording failed".to_string(),
-            detail: message,
+            detail: message.clone(),
             next_step: "Check the selected microphone and try recording again.".to_string(),
         },
         DictationError::RecordingTooShort => RecoveryDto {
@@ -430,13 +691,13 @@ fn recovery_event(
         },
         DictationError::Transcription(message) => RecoveryDto {
             title: "Transcription failed".to_string(),
-            detail: message,
+            detail: message.clone(),
             next_step: "Check the provider binary, model path, and audio file, then retry."
                 .to_string(),
         },
         DictationError::Paste(message) => RecoveryDto {
             title: "Paste failed".to_string(),
-            detail: message,
+            detail: message.clone(),
             next_step: "The transcript remains available so it can be copied or pasted manually."
                 .to_string(),
         },
@@ -445,13 +706,6 @@ fn recovery_event(
             detail: "There is no previous transcript to paste.".to_string(),
             next_step: "Record a new dictation first.".to_string(),
         },
-    };
-
-    RuntimeEventDto {
-        phase: "failed".to_string(),
-        message: recovery.title.clone(),
-        recovery: Some(recovery),
-        transcript,
     }
 }
 
@@ -485,6 +739,61 @@ fn microphone_permission_step(platform: RecoveryPlatform) -> String {
         RecoveryPlatform::Other => {
             "Allow microphone access in the operating system privacy settings.".to_string()
         }
+    }
+}
+
+fn build_transcriber(settings: &AppSettings) -> Result<WhisperCppTranscriber, DictationError> {
+    let binary_path = settings
+        .transcription
+        .whisper_cpp
+        .binary_path
+        .clone()
+        .ok_or_else(|| {
+            DictationError::Transcription("whisper.cpp binary path is not configured".to_string())
+        })?;
+    let model_path = settings
+        .transcription
+        .whisper_cpp
+        .model_path
+        .clone()
+        .ok_or_else(|| {
+            DictationError::Transcription("whisper.cpp model path is not configured".to_string())
+        })?;
+
+    let mut config = WhisperCppConfig::new(binary_path, model_path);
+    config.language_code = if settings
+        .transcription
+        .whisper_cpp
+        .language
+        .trim()
+        .is_empty()
+    {
+        "en".to_string()
+    } else {
+        settings
+            .transcription
+            .whisper_cpp
+            .language
+            .trim()
+            .to_string()
+    };
+
+    Ok(WhisperCppTranscriber::new(config))
+}
+
+struct PassiveTargets;
+
+impl TargetAppTracker for PassiveTargets {
+    fn capture_target(&mut self) -> Option<TargetApp> {
+        None
+    }
+}
+
+struct PreviewInserter;
+
+impl TextInsertionService for PreviewInserter {
+    fn insert(&mut self, _text: &str, _target: Option<&TargetApp>) -> Result<(), DictationError> {
+        Ok(())
     }
 }
 
@@ -665,6 +974,22 @@ mod tests {
             status.hotkey,
             "Control+Option+Space (Registered, last Pressed, active)"
         );
+    }
+
+    #[test]
+    fn start_dictation_surfaces_missing_provider_configuration() {
+        let (_temp_dir, service) = temp_service();
+
+        let error = service.start_dictation().unwrap_err();
+        let status = service.runtime_status();
+
+        assert!(error.contains("whisper.cpp binary path is not configured"));
+        assert_eq!(status.phase, "failed");
+        assert_eq!(status.message, "Transcription failed");
+        assert!(status
+            .recovery
+            .as_ref()
+            .is_some_and(|recovery| recovery.detail.contains("binary path is not configured")));
     }
 
     #[test]

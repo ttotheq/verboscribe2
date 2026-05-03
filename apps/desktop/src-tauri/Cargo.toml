@@ -11,8 +11,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = [] }
+verboscribe-audio = { path = "../../../crates/verboscribe-audio" }
 verboscribe-core = { path = "../../../crates/verboscribe-core" }
 verboscribe-storage = { path = "../../../crates/verboscribe-storage" }
+verboscribe-transcription = { path = "../../../crates/verboscribe-transcription" }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 tauri-plugin-global-shortcut = "2"

@@ -719,3 +719,153 @@ Improvement actions:
 | RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Next scaffold/update | Open |
 | RA-009 | Add an app-service smoke path when a platform adapter first lands. | Lead AI | Sprint 6 planning | Open |
 | RA-010 | Keep user-facing hotkey strings separate from plugin accelerator syntax. | Lead AI | Sprint 6 implementation | Open |
+
+## Sprint 6: Live Dictation Service Integration
+
+Status: Done  
+Goal: Connect hotkey events, live capture, and local transcription through the
+desktop app service so the shell can complete a real dictation cycle without
+clipboard insertion yet.
+
+### Committed Items
+
+- VS2-015: App-Service Live Dictation Flow
+
+### Candidate Items
+
+- VS2-013: Clipboard Safety Contract
+
+### Definition Of Done
+
+- App service can start and stop a real dictation cycle with live capture.
+- Hotkey pressed and released events drive the app-service dictation flow.
+- Missing provider configuration surfaces actionable recovery text.
+- Status commands expose active dictation state and last transcript.
+- Verification remains green.
+- Manual QA impact is documented.
+
+### Risks And Dependencies
+
+- Live recorder state must remain safe to own across hotkey-triggered start and
+  stop operations on macOS.
+- The provider path still depends on local `whisper.cpp` configuration.
+- Clipboard insertion is not implemented yet, so the integration ends at
+  transcript capture.
+
+### Retro Actions Carried In
+
+| ID | Action | Owner | Status |
+| --- | --- | --- | --- |
+| RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Open |
+| RA-009 | Add an app-service smoke path when a platform adapter first lands. | Lead AI | Open |
+| RA-010 | Keep user-facing hotkey strings separate from plugin accelerator syntax. | Lead AI | Open |
+
+### Planned Execution Approach
+
+1. Clean the handoff so Sprint 6 starts from a current top-level summary.
+2. Make the live recorder safe to retain inside shared app-service state.
+3. Add real app-service start and stop dictation methods plus hotkey wiring.
+4. Re-run required verification and update sprint notes.
+
+### Sprint Start Notes
+
+- Started from `main` after Sprint 5 merge and handoff review, then moved onto
+  branch `feature/sprint-6-live-dictation` for implementation and closeout.
+- VS2-015 was added to the backlog and selected as the Sprint 6 committed item.
+- The implementation will stop at transcript capture; clipboard insertion
+  remains a later slice.
+
+### Execution Notes
+
+- `CpalAudioRecorder` was refactored to retain recording control through a
+  thread-backed controller so the desktop app service can own a live recorder
+  inside shared state without depending on a non-`Send` CPAL stream handle.
+- VS2-015 complete: `AppService` now builds a real desktop dictation engine
+  from saved settings, keeps runtime dictation state and last transcript, and
+  surfaces actionable recovery when provider configuration is missing.
+- Desktop command handlers now expose explicit start, stop, and cancel
+  dictation commands in addition to the existing status and settings commands.
+- The Tauri global shortcut handler now forwards pressed and released events
+  into the real app-service dictation flow instead of updating status only.
+- Manual QA notes were updated to reflect the new transcript-capture workflow
+  and the remaining clipboard gap.
+
+### Sprint Review
+
+Increment delivered:
+
+- Real app-service dictation runtime using the live CPAL recorder and local
+  `whisper.cpp` transcriber.
+- Hotkey-driven pressed and released flow through the desktop shell into the
+  app-service dictation engine.
+- Actionable provider-configuration recovery through the existing runtime and
+  app-status DTOs.
+- Last-transcript retention in app-service status without waiting for clipboard
+  insertion.
+- A recorder ownership refactor that keeps CPAL stream handling off the shared
+  app-service thread boundary.
+
+Acceptance criteria passed:
+
+- App service can start and stop a real dictation cycle with live capture.
+- Hotkey pressed and released events drive the app-service dictation flow.
+- Missing provider configuration surfaces actionable recovery text.
+- Status commands expose active dictation state and last transcript.
+- Verification remains green.
+- Manual QA impact is documented.
+
+Blocked or deferred:
+
+- Clipboard insertion and target-app tracking are still separate stories.
+- Real desktop QA is still required on macOS and Windows with a configured
+  local `whisper.cpp` installation before relying on this flow day to day.
+- A dedicated app-service smoke path for the real dictation cycle is still
+  worth adding once a stable fixture strategy exists around the recorder path.
+
+Backlog changes:
+
+- VS2-015 moved to Done.
+
+User review:
+
+- Manual QA is now required for the full hotkey-to-transcript desktop flow.
+
+Verification:
+
+- `cargo fmt --all -- --check` passed.
+- `./scripts/verify.sh` passed.
+- `./scripts/smoke-local-fixtures.sh` passed.
+
+### Retrospective
+
+What worked:
+
+- Refactoring the recorder first removed the main ownership blocker before the
+  app-service integration work started.
+- Keeping transcript capture as a no-op insertion service let the desktop shell
+  prove the real recorder and transcriber path without prematurely folding in
+  clipboard automation.
+- Reusing the existing status DTOs kept the frontend unchanged while still
+  exposing the important runtime state.
+
+What slowed us down:
+
+- The initial Sprint 6 edits were left half-finished in `app_service.rs`, so
+  one compile-and-repair pass was needed before the integration could settle.
+- Provider configuration defaults are intentionally empty, which means the real
+  path needs explicit recovery coverage before it is useful interactively.
+
+What should change next sprint:
+
+- Add clipboard insertion and target tracking as the next vertical slice so the
+  captured transcript can leave the app without manual copy steps.
+- Add a narrow automated smoke path around the app-service dictation cycle when
+  a deterministic recorder test strategy is available.
+
+Improvement actions:
+
+| ID | Action | Owner | Target | Status |
+| --- | --- | --- | --- | --- |
+| RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Next scaffold/update | Open |
+| RA-009 | Add an app-service smoke path when a platform adapter first lands. | Lead AI | Sprint 7 planning | Open |
+| RA-010 | Keep user-facing hotkey strings separate from plugin accelerator syntax. | Lead AI | Sprint 6 implementation | Done |

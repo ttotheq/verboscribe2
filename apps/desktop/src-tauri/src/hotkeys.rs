@@ -16,10 +16,10 @@ pub fn install<R: Runtime>(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |_app, _shortcut, event| match event.state() {
                     ShortcutState::Pressed => {
-                        handler_service.record_hotkey_event(HotkeyEventState::Pressed);
+                        let _ = handler_service.handle_hotkey_event(HotkeyEventState::Pressed);
                     }
                     ShortcutState::Released => {
-                        handler_service.record_hotkey_event(HotkeyEventState::Released);
+                        let _ = handler_service.handle_hotkey_event(HotkeyEventState::Released);
                     }
                 })
                 .build(),
