@@ -2,7 +2,7 @@
 
 Use these checks before claiming platform-facing behavior works. Automated
 checks should run from the repo root. Manual checks stay explicit until the
-hotkey, target tracking, clipboard, and paste adapters exist.
+implemented adapters have been exercised on real desktops.
 
 ## Automated Local Fixture Checks
 
@@ -28,36 +28,42 @@ overrides:
 
 ## macOS Manual Smoke Checklist
 
-Status: pending adapter implementation.
+Status: adapter implemented, manual QA pending.
 
 - Hotkey registration: verify the dictation shortcut registers, reports
   conflicts, and receives press/release events outside the app.
 - Target tracking: verify the active app before recording is captured and
   remains available while VerboScribe has focus.
 - Clipboard write: verify transcript text is placed on the clipboard.
+- Paste insertion: verify transcript text pastes back into the previously
+  active app after dictation ends.
 - Paste fallback: verify a failed paste leaves transcript text available for
   manual paste.
 - Microphone permission: verify denial produces recovery text pointing to
   System Settings > Privacy & Security > Microphone.
+- Accessibility permission: verify paste automation failure reports recovery
+  clearly when System Events access is denied.
 
 ## Windows Manual Smoke Checklist
 
-Status: pending adapter implementation.
+Status: first adapter implemented, manual QA pending.
 
 - Hotkey registration: verify the dictation shortcut registers, reports
   conflicts, and receives press/release events outside the app.
 - Target tracking: verify the foreground window before recording is captured and
   remains available while VerboScribe has focus.
 - Clipboard write: verify transcript text is placed on the clipboard.
+- Paste insertion: verify transcript text pastes back into the previously
+  active window after dictation ends.
 - Paste fallback: verify a failed paste leaves transcript text available for
   manual paste.
 - Microphone permission: verify denial produces recovery text pointing to
   Settings > Privacy & security > Microphone.
+- Foreground activation: verify the saved target window is reactivated before
+  paste when focus changed during recording.
 
 ## Current Gaps
 
-- Live microphone capture is not implemented.
-- Global hotkey registration is not implemented.
-- Target app/window tracking is not implemented.
-- Clipboard paste insertion is not implemented.
 - Packaged app permission prompts have not been manually QA'd.
+- Linux clipboard/paste automation is not implemented.
+- Windows paste and target tracking behavior still needs manual validation.

@@ -172,7 +172,7 @@ Acceptance criteria:
 - Clipboard preservation/restore policy is documented.
 - Platform inserters return typed paste failures.
 
-Status: Backlog
+Status: Done
 
 ### VS2-014: Live Microphone Capture Adapter
 
@@ -215,7 +215,7 @@ Acceptance criteria:
 - Send platform paste shortcut.
 - On failure, leave transcript on clipboard and report recovery guidance.
 
-Status: Backlog
+Status: Done
 
 ### VS2-015: App-Service Live Dictation Flow
 
@@ -245,4 +245,4 @@ Output:
 
 - Short decision note with APIs, permissions, and failure modes.
 
-Status: Backlog
+Status: Done

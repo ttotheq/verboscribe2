@@ -94,6 +94,19 @@ Current defaults:
 - `whisper.cpp` binary path: unset
 - `whisper.cpp` model path: unset
 
+## Paste Automation Notes
+
+The current desktop slice uses platform adapters for target capture and
+clipboard-first paste insertion.
+
+- macOS: target capture uses `lsappinfo`; paste activation and `Cmd+V` use
+  short-lived system commands and may require Accessibility permission for
+  `System Events`.
+- Windows: target capture and activation use a first-pass PowerShell plus
+  Win32 interop path; clipboard text is written before paste automation so the
+  transcript remains available if paste fails.
+- Linux: clipboard and paste automation are not implemented.
+
 ## Secrets
 
 Do not store cloud API keys in plain settings files.

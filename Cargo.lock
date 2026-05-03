@@ -4085,6 +4085,7 @@ dependencies = [
  "tempfile",
  "verboscribe-audio",
  "verboscribe-core",
+ "verboscribe-platform",
  "verboscribe-storage",
  "verboscribe-transcription",
 ]

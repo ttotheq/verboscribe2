@@ -10,6 +10,7 @@ use verboscribe_core::{
     DictationError, DictationState, HotkeyEvent, ProcessedTranscript, TargetApp, TargetAppTracker,
     TextInsertionService, TranscriptProcessingOptions, TranscriptProcessor, TranscriptionProvider,
 };
+use verboscribe_platform::{DesktopTargetTracker, DesktopTextInserter};
 use verboscribe_storage::{
     AppSettings, JsonSettingsStore, SettingsDictationMode, TranscriptionProviderKind,
 };
@@ -125,11 +126,11 @@ struct HotkeyStatusSnapshot {
 }
 
 type DesktopDictationEngine = DictationEngine<
-    PassiveTargets,
+    DesktopTargetTracker,
     CpalAudioRecorder,
     WhisperCppTranscriber,
     DefaultTranscriptProcessor,
-    PreviewInserter,
+    DesktopTextInserter,
 >;
 
 #[derive(Default)]
@@ -441,11 +442,11 @@ impl AppService {
     ) -> Result<DesktopDictationEngine, DictationError> {
         Ok(DictationEngine::new(
             settings.dictation_config(),
-            PassiveTargets,
+            DesktopTargetTracker::default(),
             CpalAudioRecorder::new(std::env::temp_dir().join("verboscribe2").join("recordings")),
             build_transcriber(settings)?,
             DefaultTranscriptProcessor::new(TranscriptProcessingOptions::default()),
-            PreviewInserter,
+            DesktopTextInserter::default(),
         ))
     }
 
@@ -779,22 +780,6 @@ fn build_transcriber(settings: &AppSettings) -> Result<WhisperCppTranscriber, Di
     };
 
     Ok(WhisperCppTranscriber::new(config))
-}
-
-struct PassiveTargets;
-
-impl TargetAppTracker for PassiveTargets {
-    fn capture_target(&mut self) -> Option<TargetApp> {
-        None
-    }
-}
-
-struct PreviewInserter;
-
-impl TextInsertionService for PreviewInserter {
-    fn insert(&mut self, _text: &str, _target: Option<&TargetApp>) -> Result<(), DictationError> {
-        Ok(())
-    }
 }
 
 struct FakeTargets;

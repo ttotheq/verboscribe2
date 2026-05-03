@@ -13,6 +13,7 @@ serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = [] }
 verboscribe-audio = { path = "../../../crates/verboscribe-audio" }
 verboscribe-core = { path = "../../../crates/verboscribe-core" }
+verboscribe-platform = { path = "../../../crates/verboscribe-platform" }
 verboscribe-storage = { path = "../../../crates/verboscribe-storage" }
 verboscribe-transcription = { path = "../../../crates/verboscribe-transcription" }
 

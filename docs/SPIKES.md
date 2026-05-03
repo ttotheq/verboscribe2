@@ -53,3 +53,49 @@ Rejected for now:
   the core recording needs.
 - Platform-specific AVFoundation/WASAPI first: better reserved for fallback
   adapters if CPAL behavior is insufficient.
+
+## SPIKE-002: Windows Paste And Target Tracking
+
+Status: Done  
+Date: 2026-05-02
+
+Question:
+
+Which Windows APIs should be used for foreground window tracking and paste
+automation?
+
+Decision:
+
+Use a first-pass **PowerShell + Win32 interop** path:
+
+- capture the foreground window handle with `GetForegroundWindow`
+- map it to a process with `GetWindowThreadProcessId`
+- reactivate it with `SetForegroundWindow`
+- write clipboard text before automation
+- trigger paste with `System.Windows.Forms.SendKeys`
+
+Rationale:
+
+- This keeps the first Windows adapter small and isolated behind the existing
+  Rust platform boundary.
+- Window handle capture gives the insertion path a durable target identity
+  without dragging Win32 details into `verboscribe-core`.
+- Clipboard-first ordering satisfies the safety requirement that dictated text
+  remains available when automation fails.
+- Manual QA is still required because foreground activation and `SendKeys`
+  behavior can vary across desktop sessions and app types.
+
+Implementation shape:
+
+- `verboscribe-platform` owns the target capture and insertion command planning.
+- Target capture returns a `TargetApp` identifier encoded from the saved window
+  handle.
+- Clipboard write runs before activation or paste.
+- Activation and paste failures return typed paste errors with manual recovery
+  guidance.
+
+Known limitations:
+
+- This first adapter is intentionally pragmatic rather than final.
+- Richer Windows automation may later move to direct Rust Win32 calls if
+  PowerShell or `SendKeys` prove unreliable in QA.

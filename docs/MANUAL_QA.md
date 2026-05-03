@@ -35,11 +35,12 @@ Windows target apps:
 
 - With valid local `whisper.cpp` binary and model paths saved in settings,
   pressing and releasing the dictation hotkey should drive recording,
-  transcription, and last-transcript capture in the VerboScribe 2 status UI.
+  transcription, target reactivation, paste insertion, and last-transcript
+  capture in the VerboScribe 2 status UI.
 - Missing `whisper.cpp` binary or model paths should report actionable recovery
   text instead of hanging the dictation flow.
 - After a successful dictation, the last transcript should remain visible in the
-  app status surface even though clipboard insertion is not implemented yet.
+  app status surface after insertion succeeds.
 
 ## Failure Recovery
 
@@ -79,7 +80,7 @@ Groq Whisper:
 - Pressing the global hotkey starts the live dictation flow and updates the
   status surface while recording.
 - Releasing the global hotkey stops recording and advances the status surface to
-  transcription or recovery.
+  transcription, insertion, or recovery.
 - Re-registering the configured hotkey does not leave duplicate registrations
   behind.
 

@@ -869,3 +869,163 @@ Improvement actions:
 | RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Next scaffold/update | Open |
 | RA-009 | Add an app-service smoke path when a platform adapter first lands. | Lead AI | Sprint 7 planning | Open |
 | RA-010 | Keep user-facing hotkey strings separate from plugin accelerator syntax. | Lead AI | Sprint 6 implementation | Done |
+
+## Sprint 7: Clipboard Insertion And Target Tracking
+
+Status: Done  
+Goal: Paste captured transcripts back into the previously active app while
+making clipboard fallback explicit when automated insertion fails.
+
+### Committed Items
+
+- VS2-009: Clipboard Paste Insertion
+- VS2-013: Clipboard Safety Contract
+
+### Candidate Items
+
+- SPIKE-002: Windows Paste And Target Tracking
+
+### Definition Of Done
+
+- A platform adapter captures the target app before recording and reuses it for
+  insertion.
+- Dictation flow copies transcript text to the clipboard before attempting
+  automation.
+- Automated paste failures leave transcript text available on the clipboard and
+  surface recovery guidance.
+- Platform-specific code stays out of `verboscribe-core`.
+- Verification remains green.
+- Manual QA impact is documented.
+
+### Risks And Dependencies
+
+- macOS paste automation may depend on Accessibility permission and can fail in
+  ways that need clear timeout and recovery handling.
+- Windows target activation and paste behavior still need careful platform
+  design, even if a first adapter lands this sprint.
+- The current desktop UI is status-focused, so validation relies on status DTOs
+  and manual QA rather than a rich insertion workflow UI.
+
+### Retro Actions Carried In
+
+| ID | Action | Owner | Status |
+| --- | --- | --- | --- |
+| RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Open |
+| RA-009 | Add an app-service smoke path when a platform adapter first lands. | Lead AI | Open |
+
+### Planned Execution Approach
+
+1. Add `verboscribe-platform` adapters for target capture and clipboard-first
+   paste insertion with timeout-guarded command execution.
+2. Wire the real platform inserter and tracker into `AppService`.
+3. Add focused tests for command planning, clipboard safety, and app-service
+   recovery behavior.
+4. Re-run required verification, update manual QA notes, and close the sprint.
+
+### Sprint Start Notes
+
+- Started from `main` after Sprint 6 closeout and cold-start handoff hardening.
+- Branch: `feature/sprint-7-clipboard-insertion`.
+- The sprint is taking the next recommended vertical slice from the handoff:
+  clipboard insertion plus target-app tracking.
+
+### Execution Notes
+
+- `verboscribe-platform` now owns a real `DesktopTargetTracker` and
+  `DesktopTextInserter` with timeout-guarded command execution instead of
+  leaving target tracking and insertion as shell placeholders.
+- Target capture now remembers the last non-VerboScribe app so the insertion
+  path can avoid pasting into the VerboScribe window after UI interaction.
+- Clipboard write now happens before activation or paste automation so the
+  dictated transcript remains available even when insertion fails.
+- `AppService` now wires the real platform tracker and inserter into the live
+  dictation engine instead of the Sprint 6 preview inserter.
+- SPIKE-002 was completed as part of the platform adapter design and documented
+  in `docs/SPIKES.md`.
+- Manual QA, platform smoke, and operations docs were updated to reflect the
+  new insertion path and remaining platform risks.
+
+### Sprint Review
+
+Increment delivered:
+
+- Real platform target tracking for the active app before recording.
+- Clipboard-first insertion service that writes transcript text before any paste
+  automation attempt.
+- macOS paste activation plus `Cmd+V` command planning with timeout-guarded
+  execution.
+- First-pass Windows target activation and paste command planning using
+  PowerShell plus Win32 interop.
+- Desktop app-service wiring that now inserts into the target app instead of
+  stopping at transcript capture.
+
+Acceptance criteria passed:
+
+- A platform adapter captures the target app before recording and reuses it for
+  insertion.
+- Dictation flow copies transcript text to the clipboard before attempting
+  automation.
+- Automated paste failures leave transcript text available on the clipboard and
+  surface recovery guidance.
+- Platform-specific code stays out of `verboscribe-core`.
+- Verification remains green.
+- Manual QA impact is documented.
+
+Blocked or deferred:
+
+- Manual OS QA is still required on macOS and Windows before claiming the paste
+  flow is reliable in real desktops.
+- Linux clipboard and paste automation are still not implemented.
+- If Windows QA shows `SendKeys` or PowerShell activation is unreliable, the
+  adapter may need to move to direct Rust Win32 calls in a later sprint.
+
+Backlog changes:
+
+- VS2-009 moved to Done.
+- VS2-013 moved to Done.
+- SPIKE-002 moved to Done.
+
+User review:
+
+- Manual QA is now required for full end-to-end paste insertion on macOS and
+  Windows, including permission-denied fallback cases.
+
+Verification:
+
+- `cargo fmt --all -- --check` passed.
+- `./scripts/verify.sh` passed.
+- `./scripts/smoke-local-fixtures.sh` passed.
+
+### Retrospective
+
+What worked:
+
+- Keeping command planning inside `verboscribe-platform` made the new adapter
+  testable without requiring live OS automation during unit tests.
+- Clipboard-first ordering gave the paste safety contract a concrete
+  implementation instead of leaving it as a documentation promise.
+- Wiring the platform adapter through the existing `DictationEngine` boundary
+  avoided churn in `verboscribe-core`.
+
+What slowed us down:
+
+- OS automation commands can hang or block on permissions, so the adapter
+  needed explicit timeout handling before it was safe to integrate.
+- Windows automation had to be designed without local execution, which keeps
+  manual QA risk higher than the macOS path.
+
+What should change next sprint:
+
+- Add an app-service smoke path around the real dictation cycle now that paste
+  insertion exists.
+- Consider a more direct Windows implementation if manual QA shows PowerShell
+  activation or `SendKeys` is weak.
+
+Improvement actions:
+
+| ID | Action | Owner | Target | Status |
+| --- | --- | --- | --- | --- |
+| RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Next scaffold/update | Open |
+| RA-009 | Add an app-service smoke path when a platform adapter first lands. | Lead AI | Sprint 8 planning | Open |
+| RA-011 | Keep platform automation commands timeout-guarded so permission prompts do not hang the dictation flow. | Lead AI | Sprint 7 implementation | Done |
+| RA-012 | Evaluate direct Rust Win32 input and activation if Windows manual QA shows the PowerShell path is unreliable. | Lead AI | Post-Sprint 7 QA follow-up | Open |
