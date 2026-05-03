@@ -1,6 +1,6 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-05-02, after Sprint 5 closeout.
+Last updated: 2026-05-02, after Sprint 6 closeout.
 
 ## Resume First
 
@@ -64,6 +64,7 @@ Current branch:
 
 Recent merge status:
 
+- `feature/sprint-6-live-dictation` merged into `main`
 - `feature/sprint-5-hotkeys` merged into `main`
 - `feature/ci-baseline` merged into `main`
 - `feature/sprint-4-live-capture` merged into `main`
@@ -75,17 +76,7 @@ Completed:
 - Sprint 3: App-Service Integration And Recovery.
 - Sprint 4: Live Capture Adapter.
 - Sprint 5: Global Hotkey Adapter.
-
-Sprint 3 goal:
-
-Turn the tested provider/audio pieces into an app-service workflow with settings
-and status/recovery events, while preparing for real platform adapters.
-
-Sprint 3 completed items:
-
-- VS2-011: Runtime Status And Recovery Events.
-- VS2-010: Minimal Settings Store.
-- VS2-012: Platform Smoke Harness.
+- Sprint 6: Live Dictation Service Integration.
 
 ## Completed Implementation
 
@@ -130,6 +121,8 @@ Audio:
 
 - WAV utilities in `crates/verboscribe-audio/src/lib.rs`.
 - `CpalAudioRecorder` in `crates/verboscribe-audio/src/lib.rs`.
+- Thread-backed recording controller keeps the live CPAL stream out of shared
+  app-service state while recording is active.
 - Writes mono 16 kHz 16-bit PCM WAV through Hound.
 - Captures live microphone input through CPAL.
 - Validates transcription-ready WAV files.
@@ -141,11 +134,14 @@ Audio:
 Tauri boundary:
 
 - `apps/desktop/src-tauri/src/app_service.rs`: Tauri-free app service with typed
-  DTOs, settings load/save, runtime status/recovery events, hotkey status, and
-  a dry-run dictation flow through the core engine.
-- `apps/desktop/src-tauri/src/commands.rs`: Tauri command adapters.
+  DTOs, settings load/save, runtime status/recovery events, hotkey status, a
+  dry-run dictation flow, and a real live-capture dictation runtime that
+  retains the last transcript without clipboard insertion yet.
+- `apps/desktop/src-tauri/src/commands.rs`: Tauri command adapters, including
+  explicit start, stop, and cancel dictation commands.
 - `apps/desktop/src-tauri/src/hotkeys.rs`: Tauri global-shortcut plugin setup,
-  registration, unregister, and settings-shortcut normalization.
+  registration, unregister, settings-shortcut normalization, and forwarding of
+  pressed or released events into the real app-service dictation flow.
 - `apps/desktop/src-tauri/src/lib.rs`: wires managed `AppService` and command
   handlers.
 
@@ -166,6 +162,12 @@ Docs/process:
   macOS/Windows manual smoke checklist.
 - `scripts/smoke-local-fixtures.sh`: local WAV validation plus `whisper.cpp`
   provider fixture smoke.
+
+## Latest Verification
+
+- `cargo fmt --all -- --check` passed.
+- `./scripts/verify.sh` passed.
+- `./scripts/smoke-local-fixtures.sh` passed.
 
 ## Important Decisions
 
@@ -205,49 +207,27 @@ The smoke script uses environment overrides if paths differ:
 - `dist/`, packaging, signing, and installer workflows are not built yet.
 - Live recording still needs manual OS QA on macOS and Windows.
 - Global hotkey registration still needs manual OS QA on macOS and Windows.
-- Hotkeys currently update status state only; they do not yet start or stop the
-  live dictation workflow.
+- The live dictation flow currently ends at transcript capture inside the app.
+- Windows CI is still deferred.
 
 ## Next Recommended Work
 
-Start Sprint 6. Recommended focus:
+Start Sprint 7. Recommended focus:
 
-1. Choose the next vertical-slice integration story. Recommended first item:
-   app-service wiring that connects the live recorder and hotkey events into a
-   real dictation flow.
-2. Add an app-service smoke path when the next platform adapter lands.
+1. Implement clipboard insertion plus target-app tracking so the captured
+   transcript can leave VerboScribe 2 and reach the user’s original text field.
+2. Add a narrow app-service smoke path around the real dictation cycle when a
+   deterministic recorder strategy is available.
 3. Add a Windows CI job once the desktop/audio path is stable enough that the
    extra platform gate improves signal more than it adds maintenance cost.
 4. Run manual recording QA on macOS and Windows before relying on live capture
    for further vertical-slice work.
 
-Sprint 3 verification on `feature/vs2-010-settings-store`:
-
-- `git status --short --branch` showed existing documentation edits carried
-  forward from `main`.
-- `cargo fmt --all -- --check` passed.
-- `./scripts/verify.sh` passed.
-- `./scripts/smoke-whisper-cpp.sh` passed and produced the expected JFK sample
-  transcript.
-- After VS2-010, `cargo fmt --all -- --check` passed and
-  `./scripts/verify.sh` passed.
-- After VS2-011, `cargo fmt --all -- --check` passed and
-  `./scripts/verify.sh` passed.
-- `./scripts/smoke-local-fixtures.sh` passed.
-- Sprint 4 baseline on `feature/sprint-4-live-capture`: `cargo fmt --all -- --check`
-  passed and `./scripts/verify.sh` passed.
-- After VS2-014, `cargo fmt --all -- --check`, `./scripts/verify.sh`, and
-  `./scripts/smoke-local-fixtures.sh` passed.
-- On `feature/ci-baseline`, `cargo fmt --all -- --check`,
-  `cargo test --workspace`, `npm --workspace apps/desktop run build`, and
-  `./scripts/verify.sh` passed.
-- After VS2-007, `cargo fmt --all -- --check`,
-  `npm --workspace apps/desktop run build`, and `./scripts/verify.sh` passed.
-
 ## User/Manual QA Needed
 
 Manual recording QA is now needed for:
 
+- full hotkey-to-transcript flow with valid local `whisper.cpp` paths
 - live microphone capture
 - global hotkey registration
 - text insertion
