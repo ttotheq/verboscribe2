@@ -116,3 +116,20 @@ Success outcomes:
 - Manual QA scripts/checklists stay aligned with implemented behavior.
 - Smoke and manual QA checks make it obvious which behaviors are implemented
   versus validated on real desktops.
+
+## EPIC-09 Mobile Reach
+
+Deliver a useful phone experience on Android and iPhone without forcing the
+desktop hotkey-and-paste model onto mobile platforms that do not support it.
+
+Success outcomes:
+
+- Android has a viable companion app plus systemwide IME path.
+- iPhone has a viable companion app path for record, transcribe, and return
+  text.
+- Any iPhone keyboard extension work is treated as optional insertion-only
+  follow-up, not as the primary live dictation path.
+- Shared Rust core and transcript logic are reused where they fit, while mobile
+  input and permission surfaces stay in mobile-specific adapters.
+- Mobile transcription strategy is explicit about offline behavior, battery,
+  latency, privacy, and secret-storage constraints.

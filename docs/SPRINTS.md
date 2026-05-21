@@ -2,7 +2,7 @@
 
 ## Sprint 1: Foundation To Testable Core
 
-Status: Done  
+Status: Done
 Goal: Make the repo buildable and establish a platform-neutral core that can
 drive the dictation vertical slice.
 
@@ -142,7 +142,7 @@ Improvement actions:
 
 ## Sprint 2: Local Audio And Transcription Slice
 
-Status: Done  
+Status: Done
 Goal: Produce a real local transcript from a recorded or fixture WAV through the
 same provider path the app will use in the vertical slice.
 
@@ -300,7 +300,7 @@ Improvement actions:
 
 ## Sprint 3: App-Service Integration And Recovery
 
-Status: Done  
+Status: Done
 Goal: Turn the tested provider/audio pieces into an app-service workflow with
 settings and status/recovery events, while preparing for real platform adapters.
 
@@ -1030,3 +1030,494 @@ Improvement actions:
 | RA-009 | Add an app-service smoke path when a platform adapter first lands. | Lead AI | Sprint 8 planning | Open |
 | RA-011 | Keep platform automation commands timeout-guarded so permission prompts do not hang the dictation flow. | Lead AI | Sprint 7 implementation | Done |
 | RA-012 | Evaluate direct Rust Win32 input and activation if Windows manual QA shows the PowerShell path is unreliable. | Lead AI | Post-Sprint 7 QA follow-up | Open |
+
+## Sprint 8: App-Service Dictation Smoke Path
+
+Status: Done
+Goal: Add a deterministic smoke path around the app-service dictation cycle so
+success and paste-failure flows can be checked without OS permissions, global
+hotkey registration, or live microphone input.
+
+### Committed Items
+
+- VS2-016: App-Service Dictation Smoke Path
+
+### Definition Of Done
+
+- A focused smoke path exercises the app-service dictation cycle through
+  injected adapters instead of the live microphone.
+- The smoke path covers both successful insertion and paste-failure transcript
+  preservation.
+- The smoke path runs locally without OS permissions, global hotkey
+  registration, or local `whisper.cpp` fixtures.
+- Platform smoke documentation reflects the new command.
+- Verification remains green.
+
+### Risks And Dependencies
+
+- The smoke path should reuse the app-service runtime and recovery logic rather
+  than inventing a parallel fake-only flow.
+- Manual desktop QA is still required for hotkeys, permissions, target
+  activation, and paste automation.
+- The existing minimum-recording guard needs explicit test configuration so the
+  smoke path reaches transcription and insertion behavior.
+
+### Retro Actions Carried In
+
+| ID | Action | Owner | Status |
+| --- | --- | --- | --- |
+| RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Open |
+| RA-009 | Add an app-service smoke path when a platform adapter first lands. | Lead AI | Open |
+| RA-012 | Evaluate direct Rust Win32 input and activation if Windows manual QA shows the PowerShell path is unreliable. | Lead AI | Open |
+
+### Planned Execution Approach
+
+1. Add a small app-service runtime seam so tests can install deterministic
+   dictation engines without rebuilding the live desktop path.
+2. Add smoke coverage for both successful insertion and paste-failure
+   transcript preservation.
+3. Add a dedicated smoke script, update docs, and rerun required verification.
+
+### Sprint Start Notes
+
+- Started from `main` after Sprint 7 closeout.
+- This sprint takes the next recommended backlog slice from the handoff:
+  `VS2-016`.
+
+### Execution Notes
+
+- `AppService` now stores a boxed runtime engine so tests can inject fake
+  target, recorder, transcription, and insertion adapters while reusing the
+  real app-service recovery and transcript bookkeeping.
+- Added focused smoke tests for a successful app-service dictation cycle and
+  for paste-failure transcript preservation.
+- Added `scripts/smoke-app-service.sh` as the repeatable local smoke command
+  for this slice.
+- Updated the platform smoke notes and handoff so `VS2-017` is now the next
+  desktop validation story.
+
+### Sprint Review
+
+Increment delivered:
+
+- Deterministic app-service smoke coverage around the real start/stop dictation
+  flow.
+- Smoke validation for both successful insertion and paste-failure transcript
+  preservation.
+- A dedicated smoke command that does not require microphone permission,
+  desktop automation, global hotkey registration, or local `whisper.cpp`
+  binaries.
+
+Acceptance criteria passed:
+
+- A focused smoke path exercises the app-service dictation cycle through
+  injected adapters instead of the live microphone.
+- The smoke path covers both successful insertion and paste-failure transcript
+  preservation.
+- The smoke path runs locally without OS permissions or global hotkey
+  registration.
+- The smoke path is documented in the platform smoke notes.
+- Verification remains green.
+
+Blocked or deferred:
+
+- Manual macOS QA is still required before treating the live desktop flow as
+  validated on a real machine.
+- Windows target activation and paste behavior still require manual validation
+  and may still need hardening after QA.
+- Linux clipboard and paste automation are still not implemented.
+
+Backlog changes:
+
+- VS2-016 moved to Done.
+- VS2-017 remains Ready as the next desktop story.
+- VS2-018 remains Ready for Windows validation after macOS QA.
+
+User review:
+
+- The next requested manual slice should be `VS2-017: macOS End-To-End
+  Dictation QA`.
+
+Verification:
+
+- `cargo fmt --all -- --check` passed.
+- `./scripts/verify.sh` passed.
+- `./scripts/smoke-app-service.sh` passed.
+- `./scripts/smoke-local-fixtures.sh` passed.
+
+### Retrospective
+
+What worked:
+
+- A small runtime-engine abstraction was enough to make the app-service smoke
+  path deterministic without pushing platform code into `verboscribe-core`.
+- Keeping the smoke checks in a dedicated script made the new coverage easy to
+  rerun independently of the local `whisper.cpp` fixtures.
+
+What slowed us down:
+
+- The fake smoke setup initially tripped the normal minimum-recording guard, so
+  the injected settings had to be aligned with the smoke intent before the path
+  reached transcription and paste handling.
+- The app-service runtime was concrete enough that a small indirection layer was
+  required before injected adapters could reuse the production bookkeeping.
+
+What should change next sprint:
+
+- Run real macOS dictation QA while the new smoke path keeps regression signal
+  narrow and repeatable.
+- Reuse the smoke seam if the Windows adapter needs to be swapped from
+  PowerShell to direct Win32 calls.
+
+Improvement actions:
+
+| ID | Action | Owner | Target | Status |
+| --- | --- | --- | --- | --- |
+| RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Next scaffold/update | Open |
+| RA-009 | Add an app-service smoke path when a platform adapter first lands. | Lead AI | Sprint 8 closeout | Done |
+| RA-012 | Evaluate direct Rust Win32 input and activation if Windows manual QA shows the PowerShell path is unreliable. | Lead AI | Post-Sprint 7 QA follow-up | Open |
+| RA-013 | Add a dedicated smoke command when a runtime slice first crosses OS boundaries and manual QA would otherwise carry the full regression burden. | Lead AI | Next similar slice | Open |
+
+## Sprint 9: macOS End-To-End Dictation QA
+
+Status: Done
+Goal: Validate the real macOS hotkey-to-paste flow on a packaged app, then
+write down the exact working behavior and remaining permission or quality gaps.
+
+### Committed Items
+
+- VS2-017: macOS End-To-End Dictation QA
+
+### Planned Execution Approach
+
+1. Run the packaged macOS app with valid local `whisper.cpp` paths.
+2. Verify the default shortcut behavior on a real target app.
+3. Separate hotkey-delivery issues from recording/transcription/paste issues
+   with focused QA tooling when needed.
+4. Record real findings in the smoke notes, manual QA notes, and handoff.
+
+### Execution Notes
+
+- Generated the standard Tauri icon assets from the current
+  `VerboScribe 2` concept art, set `bundle.icon` explicitly in
+  `apps/desktop/src-tauri/tauri.conf.json`, and verified that rebuilt macOS
+  bundles now contain `Contents/Resources/icon.icns` with
+  `CFBundleIconFile = icon.icns`, fixing the blank Dock icon on locally built
+  bundles.
+- Fixed `script/build_and_run.sh` so `--verify` and `--debug` use the actual
+  bundled executable from `CFBundleExecutable`.
+- Added `apps/desktop/src-tauri/examples/live_dictation_probe.rs` to drive the
+  real `AppService` start/stop path from the command line without depending on
+  Tauri global shortcut delivery.
+- Added opt-in `VERBOSCRIBE_DEBUG_HOTKEYS=1` logging in the Tauri shortcut
+  layer so registration and pressed/released events can be observed directly.
+- The packaged app now verifies and launches on macOS through
+  `./script/build_and_run.sh --verify`.
+- A direct probe run,
+  `cargo run -p verboscribe2-desktop --example live_dictation_probe -- 6000`,
+  inserted `Testing verb ascribe dictation.` into TextEdit and preserved the
+  same text on the clipboard.
+- The live Tauri app successfully registered both `Control+Shift+D` and the
+  default `Control+Option+Space` chords during QA.
+- A synthetic `Control+Shift+D` event reached the live handler, but that
+  temporary QA chord was not a reliable physical key combination on this
+  machine and should not replace the product default.
+- A physical default-hotkey run in press-and-hold mode pasted transcript text
+  into Notes, proving the real hotkey-to-paste path can complete on macOS.
+- A later packaged-app QA run reached recording and transcription, then failed
+  at paste with `System Events got an error: osascript is not allowed to send
+  keystrokes. (1002)`, confirming the Accessibility-denied branch is
+  reproducible on macOS.
+- The app-service recovery mapping now converts macOS Accessibility-denied
+  paste failures into actionable guidance for `VerboScribe 2`.
+- The macOS paste path now reactivates targets with `/usr/bin/open -b` and
+  sends `Cmd+V` directly from the app process instead of routing through
+  `System Events`.
+- Inspection of the latest live capture artifact showed the generated 5-second
+  WAV contained all-zero samples, explaining why repeated live runs transcribed
+  silence as `you`.
+- The recorder now treats an all-zero capture as a microphone-signal failure so
+  the app can surface recovery guidance instead of feeding silence to
+  `whisper.cpp`.
+- The packaged app bundle now includes `NSMicrophoneUsageDescription`, and
+  after resetting macOS microphone approval for `local.verboscribe2`, a fresh
+  live run pasted `Testing verbose scribe dictation in text edit 1 2 3`.
+- The latest live-capture WAV now has non-zero samples, confirming the
+  silent-capture issue was resolved on this machine.
+- The desktop app now passes a default `whisper.cpp --prompt` context for
+  `VerboScribe`, `VerboScribe 2`, `whisper.cpp`, and `TextEdit` to bias local
+  recognition toward product and app names, and `settings.json` can now append
+  extra prompt context plus pinned terms through
+  `transcription.whisperCpp.promptContext` and
+  `transcription.whisperCpp.pinnedTerms` without a new UI surface.
+- The live audio preprocessing path now trims obvious dead air around detected
+  speech and boosts low-volume captures before writing the mono 16 kHz WAV sent
+  to `whisper.cpp`; automated verification is green, but live macOS QA still
+  needs to confirm whether this meaningfully improves short-phrase recognition.
+- The most recent physical built-in-mic run now produces a near-correct
+  transcript, so the remaining issue is recognition quality and formatting
+  rather than a broken end-to-end path.
+- After switching the debug bundle to stable local signing and removing the
+  stale `/Applications/VerboScribe 2.app` copy, a rebuild-and-retest pasted
+  `Testing VerboScribe dictation in TextEdit. 1, 2, 3.` without re-adding
+  Accessibility permission.
+- A packaged-app microphone-denied retest on 2026-05-15 reported the expected
+  recovery guidance, closing that manual QA branch.
+- After resetting Accessibility approval for `local.verboscribe2`, a
+  packaged-app Accessibility-denied retest on 2026-05-15 failed automatic
+  paste, reported the expected Accessibility recovery guidance, and manual
+  `Cmd+V` pasted the exact preserved dictation text, closing that manual QA
+  branch on the current direct-paste implementation.
+- Added `docs/FEATURE_LIST.md` so the prototype feature set, current
+  implementation state, and UI gap now live in one place instead of being
+  scattered across backlog, roadmap, epics, and prototype notes.
+- Added `VS2-024: Desktop Settings Surface Foundation` to the backlog because
+  the current Tauri UI is still only a status shell while the prototype had a
+  real settings and operations interface.
+
+### Current Gaps
+
+- Stable-signed rebuilds now preserve Accessibility trust on this machine for
+  the happy path.
+- Live microphone capture now works on this machine, but transcription quality
+  is still imperfect on short phrases and the product name `VerboScribe`.
+- The current Tauri desktop UI still lacks much of the prototype operations
+  surface; Sprint 10 addresses only the first foundation pass.
+
+### Sprint Review
+
+Increment delivered:
+
+- Real packaged-app macOS QA now covers the happy path from hotkey through live
+  recording, local transcription, target reactivation, and paste.
+- Microphone-denied and Accessibility-denied failure branches were reproduced
+  and documented with concrete recovery guidance.
+- The QA toolkit improved through the packaged-app verify script, direct
+  `live_dictation_probe` example, and opt-in hotkey debug logging.
+- Product-scope truth about the UI gap was captured explicitly in
+  `docs/FEATURE_LIST.md` and the backlog.
+
+Acceptance criteria passed:
+
+- The full hotkey-to-paste flow was run on macOS with valid local
+  `whisper.cpp` paths.
+- Microphone permission prompts and denied-permission recovery were verified.
+- Clipboard fallback when paste automation fails was verified on macOS.
+- The tested apps, observed outcomes, and remaining gaps were recorded in
+  sprint notes, manual QA notes, and handoff documentation.
+
+Blocked or deferred:
+
+- Recognition quality on short phrases and the product name `VerboScribe`
+  remains imperfect even though the end-to-end path now works.
+- Windows QA remains a separate next story.
+- The desktop settings surface gap moved to Sprint 10.
+
+Backlog changes:
+
+- VS2-017 moved to Done.
+- VS2-024 was added as the next desktop UI story.
+
+User review:
+
+- Optional follow-up macOS QA can rerun a short built-in-mic phrase to judge
+  whether the audio preprocessing tweak improved recognition quality enough for
+  daily use.
+
+Verification:
+
+- `cargo fmt --all -- --check` passed.
+- `./scripts/verify.sh` passed.
+- `./scripts/smoke-app-service.sh` passed.
+- `./script/build_and_run.sh --verify` passed.
+
+### Retrospective
+
+What worked:
+
+- Separating hotkey delivery, live capture, and paste troubleshooting with the
+  direct probe example prevented the QA loop from stalling on a single black
+  box.
+- Stable local signing and explicit bundle metadata removed a large amount of
+  macOS permission churn during repeated rebuilds.
+- Writing product truth down while findings were fresh directly informed the
+  next UI slice.
+
+What slowed us down:
+
+- macOS permission and signing state still introduced noise until the bundle
+  identity stabilized.
+- Silent-capture diagnosis required artifact inspection before the real fault
+  became obvious.
+- The QA story exposed a UI gap that backend fixes alone could not close.
+
+What should change next sprint:
+
+- When the backend is substantially ahead of the UI, move quickly to the
+  minimum desktop surface that exposes the working behavior instead of leaving
+  settings stranded in JSON.
+- Keep using focused QA tooling when OS permission state obscures the actual
+  regression.
+
+Improvement actions:
+
+| ID | Action | Owner | Target | Status |
+| --- | --- | --- | --- | --- |
+| RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Next scaffold/update | Open |
+| RA-012 | Evaluate direct Rust Win32 input and activation if Windows manual QA shows the PowerShell path is unreliable. | Lead AI | Post-Sprint 7 QA follow-up | Open |
+| RA-013 | Add a dedicated smoke command when a runtime slice first crosses OS boundaries and manual QA would otherwise carry the full regression burden. | Lead AI | Next similar slice | Open |
+
+## Sprint 10: Desktop Settings Surface Foundation
+
+Status: Done
+Goal: Replace the status-only desktop shell with a real settings-and-status
+surface for the current local `whisper.cpp` dictation stack.
+
+### Committed Items
+
+- VS2-024: Desktop Settings Surface Foundation
+
+### Definition Of Done
+
+- Replace the status-only desktop shell with a real settings surface.
+- Expose the existing backend settings for `whisper.cpp` binary path, model
+  path, language, dictation mode, dictation hotkey, prompt context, and pinned
+  terms.
+- Keep current status, recovery, and last-transcript visibility in the same
+  desktop surface.
+- Saving from the desktop UI persists through the existing settings store.
+- Manual QA notes call out which prototype controls are still intentionally
+  missing after this foundation slice.
+
+### Risks And Dependencies
+
+- The frontend must stay aligned with the existing Tauri `settings` and
+  `save_settings` commands instead of creating a second settings path.
+- Reapplying a changed hotkey must not leave behind a stale registration.
+- Tauri-specific UI still benefits from a browser-visible preview path during
+  frontend-only work.
+
+### Retro Actions Carried In
+
+| ID | Action | Owner | Status |
+| --- | --- | --- | --- |
+| RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Open |
+| RA-012 | Evaluate direct Rust Win32 input and activation if Windows manual QA shows the PowerShell path is unreliable. | Lead AI | Open |
+| RA-013 | Add a dedicated smoke command when a runtime slice first crosses OS boundaries and manual QA would otherwise carry the full regression burden. | Lead AI | Open |
+
+### Planned Execution Approach
+
+1. Replace the status-only `main.ts` rendering path with a real settings form
+   and a separate live status rail.
+2. Keep the new UI on the existing `settings`, `save_settings`, `app_status`,
+   and `runtime_status` command boundary.
+3. Reapply the dictation hotkey after saves so the desktop shell reflects the
+   changed configuration immediately.
+4. Update QA and handoff docs to describe the new surface and the still-missing
+   prototype controls.
+
+### Execution Notes
+
+- Replaced the single status card in `apps/desktop/src/main.ts` with a real
+  desktop settings form for provider path, model path, language, dictation
+  mode, hotkey, prompt context, and pinned terms.
+- Kept live provider, mode, hotkey, status, recovery, usage hint, and last
+  transcript visibility in the same surface through periodic `app_status` and
+  `runtime_status` refreshes.
+- Added save and reload flows against the existing Tauri settings commands and
+  re-applied the hotkey after saves through `register_dictation_hotkey`.
+- Added manual start, stop, and cancel buttons to the desktop shell so the new
+  surface also supports focused runtime QA.
+- Added a browser-preview fallback mode when Tauri commands are unavailable so
+  the Vite build still renders the layout with fallback data outside the shell.
+- Follow-up UI hardening after packaged-app QA: dictation-mode changes are now
+  documented and signaled as drafts until saved, because the live runtime keeps
+  using the last saved mode until `Save settings to apply` succeeds.
+- Refreshed `apps/desktop/src/styles.css` into a real two-column desktop layout
+  with a mobile collapse path instead of the previous single-panel shell.
+- Updated manual QA and feature-inventory docs to call out the controls that
+  are now present and the prototype controls that are still intentionally
+  missing.
+
+### Sprint Review
+
+Increment delivered:
+
+- The desktop shell is no longer a status-only page; it now exposes the core
+  saved `whisper.cpp` settings directly in the app.
+- Live status, recovery messaging, usage hint, and last transcript remain
+  visible beside the settings form.
+- Saving settings persists through the existing store and immediately re-applies
+  the dictation hotkey.
+- The desktop shell now has manual runtime controls that are useful for QA in
+  addition to the global hotkey path.
+
+Acceptance criteria passed:
+
+- The status-only shell was replaced with a real settings surface.
+- Existing backend settings for provider paths, language, mode, hotkey, prompt
+  context, and pinned terms are now editable in the UI.
+- Status, recovery, and last transcript are still visible in the same surface.
+- Saving from the desktop UI persists through the existing settings store.
+- Manual QA notes now explicitly call out the intentionally missing prototype
+  controls after this foundation slice.
+
+Blocked or deferred:
+
+- Minimum recording duration is still persisted in the backend but remains
+  intentionally read-only in this first UI pass.
+- Transcript actions such as paste-last, retry, and preview-before-insert still
+  need their own follow-up story.
+- Settings are intentionally explicit-save, so QA must verify saved behavior
+  instead of assuming field edits apply immediately.
+- Browser-plugin verification was not possible in this session because the
+  required `node_repl` execution tool was not exposed.
+
+Backlog changes:
+
+- VS2-024 moved to Done.
+
+User review:
+
+- Manual packaged-app QA should confirm that saving settings persists after
+  relaunch and that changed hotkeys re-register cleanly.
+
+Verification:
+
+- `cargo fmt --all -- --check` passed.
+- `./scripts/smoke-app-service.sh` passed.
+- `./scripts/verify.sh` passed.
+
+### Retrospective
+
+What worked:
+
+- Reusing the existing Tauri settings and runtime commands kept the story
+  bounded to the desktop shell instead of reopening backend design.
+- Keeping status and settings in one screen closed the most obvious prototype
+  gap without pretending to solve the entire operations surface.
+- A browser-preview fallback path makes frontend-only inspection possible even
+  when the full Tauri shell is not the easiest feedback loop.
+
+What slowed us down:
+
+- A Tauri shell does not automatically have a convenient browser-visible QA
+  path, so the frontend needed an explicit preview fallback.
+- Browser-plugin verification could not be completed because the required tool
+  surface was unavailable in this session.
+
+What should change next sprint:
+
+- Choose explicitly between another product-surface slice and the pending
+  Windows QA story instead of letting both stay half-prioritized.
+- If product surface remains the priority, take the next slice through
+  transcript recovery actions rather than broadening the form indefinitely.
+
+Improvement actions:
+
+| ID | Action | Owner | Target | Status |
+| --- | --- | --- | --- | --- |
+| RA-003 | Add framework asset/config requirements to foundation stories when scaffolding new shells. | Lead AI | Next scaffold/update | Open |
+| RA-012 | Evaluate direct Rust Win32 input and activation if Windows manual QA shows the PowerShell path is unreliable. | Lead AI | Post-Sprint 7 QA follow-up | Open |
+| RA-013 | Add a dedicated smoke command when a runtime slice first crosses OS boundaries and manual QA would otherwise carry the full regression burden. | Lead AI | Next similar slice | Open |
+| RA-014 | Keep a browser-visible fallback path for Tauri frontend work so layout verification is still possible outside the live shell. | Lead AI | Sprint 10 closeout | Done |

@@ -1,5 +1,8 @@
 # Roadmap
 
+For the consolidated current feature inventory and the prototype-to-current UI
+gap review, read `docs/FEATURE_LIST.md`.
+
 ## Milestone 0: Foundation
 
 Status: done.
@@ -46,8 +49,10 @@ Acceptance:
 
 ## Milestone 2: Provider And Settings Hardening
 
-Status: ready after vertical-slice QA.
+Status: in progress after `VS2-024`.
 
+- Keep extending the desktop settings and operations surface.
+- Add transcript recovery actions such as paste-last, retry, or preview.
 - Add Groq Whisper provider behind the same trait.
 - Store Groq API key in platform secret storage.
 - Add provider status and actionable errors.
@@ -100,8 +105,46 @@ Status: future.
 - Add release notes.
 - Add manual QA matrix for both platforms.
 
+## Parallel Track: Mobile Reach
+
+Status: discovery queued after desktop validation and hardening.
+
+Goal: make VerboScribe genuinely usable on phones without assuming desktop
+features such as global hotkeys, target reactivation, or clipboard-driven paste
+automation exist on mobile.
+
+Product stance:
+
+- Android target: companion app plus systemwide IME.
+- iPhone target: companion app first.
+- iPhone keyboard support, if pursued later, is insertion-only for
+  pre-generated text rather than live microphone dictation.
+
+Scope:
+
+- Run mobile product-shape and provider-strategy spikes before committing to
+  implementation stories.
+- Reuse `verboscribe-core`, transcript processing, and shared settings/domain
+  models where practical.
+- Keep mobile platform adapters separate from desktop hotkey, target-tracking,
+  and paste adapters.
+- Expect native Kotlin and Swift modules for IME, keyboard, and permission
+  surfaces even if the main app shell stays Tauri-based.
+
+Acceptance:
+
+- Mobile product constraints and non-goals are documented clearly.
+- Android IME foundation and companion flow are backlog-ready.
+- iPhone companion flow is backlog-ready with platform limitations explicit.
+- The chosen first mobile transcription path is documented with tradeoffs.
+
 ## Backlog
 
+- Android IME and companion flow.
+- iPhone companion app flow.
+- Optional iPhone keyboard insertion surface for pre-generated text.
+- Desktop settings and operations surface that exposes the existing backend
+  capabilities.
 - Model downloader/manager.
 - History browser/search.
 - Rich snippet manager.

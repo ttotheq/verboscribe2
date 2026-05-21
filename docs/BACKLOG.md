@@ -232,8 +232,6 @@ Acceptance criteria:
 
 Status: Done
 
-## Ready
-
 ### VS2-016: App-Service Dictation Smoke Path
 
 Type: Story  
@@ -249,7 +247,7 @@ Acceptance criteria:
   registration.
 - The smoke path is documented in the platform smoke notes.
 
-Status: Ready
+Status: Done
 
 ### VS2-017: macOS End-To-End Dictation QA
 
@@ -266,7 +264,29 @@ Acceptance criteria:
 - Confirm the tested apps and remaining gaps in the handoff and manual QA
   notes.
 
-Status: Ready
+Status: Done
+
+### VS2-024: Desktop Settings Surface Foundation
+
+Type: Story
+Epic: EPIC-06
+User value: Users can actually configure the working dictation stack from the
+desktop app instead of editing JSON or relying on a status-only shell.
+Acceptance criteria:
+
+- Replace the status-only desktop shell with a real settings surface.
+- Expose the existing backend settings for `whisper.cpp` binary path, model
+  path, language, dictation mode, dictation hotkey, prompt context, and pinned
+  terms.
+- Keep current status, recovery, and last-transcript visibility in the same
+  desktop surface.
+- Saving from the desktop UI persists through the existing settings store.
+- Manual QA notes call out which prototype controls are still intentionally
+  missing after this foundation slice.
+
+Status: Done
+
+## Ready
 
 ### VS2-018: Windows Paste Validation And Hardening
 
@@ -286,7 +306,123 @@ Acceptance criteria:
 
 Status: Ready
 
+### SPIKE-003: Mobile Product Shape And Platform Constraints
+
+Question: What is the smallest phone product that is genuinely useful on both
+Android and iPhone without assuming desktop OS automation features?
+
+Output:
+
+- Decision note with Android and iPhone user flows, explicit non-goals, and
+  recommended implementation order.
+- Explicit confirmation that Android pursues IME plus companion app while
+  iPhone pursues companion-app-first because iOS custom keyboards are not the
+  primary live-dictation path.
+- Shared-core reuse plan plus the native mobile surfaces that still need
+  Kotlin or Swift implementations.
+
+Status: Ready
+
+### SPIKE-004: Mobile Transcription Strategy
+
+Question: Which mobile transcription path best fits VerboScribe: bundled local
+model, cloud provider, or hybrid fallback?
+
+Output:
+
+- Decision note covering install size, latency, battery and thermal impact,
+  offline behavior, privacy, and secret-storage implications on Android and
+  iPhone.
+- Recommended first mobile provider path plus a fallback plan.
+
+Status: Ready
+
 ## Backlog
+
+### VS2-019: Android IME Foundation
+
+Type: Story
+Epic: EPIC-09
+User value: Android users can invoke VerboScribe from the system keyboard
+across apps.
+Acceptance criteria:
+
+- Android IME service target exists and builds.
+- The IME can insert provided text into standard text fields.
+- The companion-app and IME state-sharing approach is documented and tested at
+  a minimal integration level.
+- Android enablement and permission onboarding are documented.
+
+Status: Backlog
+
+### VS2-020: Android Dictation Flow
+
+Type: Story
+Epic: EPIC-09
+User value: Android users can record speech and insert transcript text into the
+current field from a VerboScribe keyboard flow.
+Acceptance criteria:
+
+- The Android companion and IME flow can start recording, stop, transcribe, and
+  commit text into the active editor.
+- Permission and failure recovery text are explicit.
+- Manual QA covers at least one browser text field, one messages-style field,
+  and one notes-style field.
+
+Status: Backlog
+
+### VS2-021: iPhone Companion Dictation Flow
+
+Type: Story
+Epic: EPIC-09
+User value: iPhone users can record speech, transcribe it, and quickly return
+text to the app they were using even though iOS does not support the desktop
+dictation model.
+Acceptance criteria:
+
+- The iPhone app can record speech and produce transcript text through an
+  in-app flow.
+- The first supported share, copy, or return-to-caller flow is defined and
+  tested.
+- Permission and failure recovery are documented.
+- The design does not assume desktop-style target reactivation or global
+  hotkeys.
+
+Status: Backlog
+
+### VS2-022: iPhone Keyboard Insertion Experiment
+
+Type: Story
+Epic: EPIC-09
+User value: iPhone users may optionally insert previously generated text from a
+keyboard surface where iOS allows custom keyboards.
+Acceptance criteria:
+
+- The keyboard extension can read shared prepared text from the containing app
+  and insert it where custom keyboards are allowed.
+- Secure-field, phone-pad, host-app opt-out, and microphone limitations are
+  documented in manual QA notes.
+- The extension does not attempt live microphone dictation.
+
+Status: Backlog
+
+### VS2-023: VerboScribe 2 Icon Exploration
+
+Type: Story
+Epic: EPIC-07
+User value: VerboScribe 2 should ship with a distinctive visual identity that
+does not read as a recycled mark from the older VerboScribe app.
+Acceptance criteria:
+
+- Produce multiple alternate icon or graphic directions for `VerboScribe 2`,
+  not just one concept refinement.
+- Each direction is visibly distinct from the older VerboScribe app icon and
+  avoids looking like a generic microphone or waveform badge.
+- Review the options at app-icon sizes, not only as large artwork.
+- Document the preferred direction and any follow-up production work needed for
+  final bundle assets.
+
+Status: Backlog
 
 - Model downloader/manager.
 - History browser/search.

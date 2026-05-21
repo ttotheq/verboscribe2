@@ -71,6 +71,7 @@ The first local provider will shell out to `whisper.cpp`. Expected settings:
 - Model path.
 - Language code.
 - Prompt/context.
+- Pinned terms.
 
 The provider should support both macOS and Windows paths and return clear errors
 for missing or non-executable binaries and missing models.
@@ -93,19 +94,36 @@ Current defaults:
 - Dictation hotkey: `Control+Option+Space`
 - `whisper.cpp` binary path: unset
 - `whisper.cpp` model path: unset
+- `whisper.cpp` prompt-context override: empty
+- `whisper.cpp` pinned-terms override: empty
+
+Current note: the desktop shell now exposes these fields directly in the
+settings surface. Manual edits in `settings.json` still work for advanced or
+offline changes under `transcription.whisperCpp.promptContext` and
+`transcription.whisperCpp.pinnedTerms`. Older settings files that omit those
+keys still load correctly and default both overrides to empty strings. In the
+desktop UI, form edits remain drafts until `Save settings to apply` succeeds;
+only the saved values affect the live dictation path and hotkey behavior.
 
 ## Paste Automation Notes
 
 The current desktop slice uses platform adapters for target capture and
 clipboard-first paste insertion.
 
-- macOS: target capture uses `lsappinfo`; paste activation and `Cmd+V` use
-  short-lived system commands and may require Accessibility permission for
-  `System Events`.
+- macOS: target capture uses `lsappinfo`; target reactivation uses
+  `/usr/bin/open -b <bundle-id>`; paste uses a direct `Cmd+V` key event from
+  the app process and requires Accessibility permission for `VerboScribe 2`.
 - Windows: target capture and activation use a first-pass PowerShell plus
   Win32 interop path; clipboard text is written before paste automation so the
   transcript remains available if paste fails.
 - Linux: clipboard and paste automation are not implemented.
+
+For stable macOS Accessibility trust across rebuilds, prefer a stable local
+code-signing identity instead of ad-hoc signing. The local run script now
+prefers `VERBOSCRIBE_CODESIGN_IDENTITY` when set, or a known local identity
+such as `VerboScribe Local Code Signing` or `Whisper Dictation Local Code Signing`
+when available. If the app was previously approved while ad-hoc signed, remove
+the old Accessibility entry once and add the newly signed app bundle.
 
 ## Secrets
 
