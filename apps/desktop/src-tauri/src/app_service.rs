@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use verboscribe_audio::CpalAudioRecorder;
 use verboscribe_core::{
     AudioCapture, AudioRecorder, DefaultTranscriptProcessor, DictationConfig, DictationEngine,
-    DictationError, DictationState, HotkeyEvent, ProcessedTranscript, TargetApp, TargetAppTracker,
-    TextInsertionService, TranscriptProcessingOptions, TranscriptProcessor, TranscriptionProvider,
+    DictationError, DictationState, HotkeyEvent, PersonalDictionary, ProcessedTranscript,
+    TargetApp, TargetAppTracker, TextInsertionService, TranscriptProcessingOptions,
+    TranscriptProcessor, TranscriptionProvider,
 };
 use verboscribe_platform::{DesktopTargetTracker, DesktopTextInserter};
 use verboscribe_storage::{
@@ -16,13 +17,19 @@ use verboscribe_storage::{
 };
 use verboscribe_transcription::{WhisperCppConfig, WhisperCppTranscriber};
 
+const DEFAULT_WHISPER_PROMPT_CONTEXT: &str =
+    "This is desktop dictation for VerboScribe 2 on macOS and Windows. Preserve exact product names, application names, and technical terms when they are heard clearly.";
+const DEFAULT_WHISPER_PINNED_TERMS: &str = "VerboScribe, VerboScribe 2, whisper.cpp, TextEdit";
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AppStatusDto {
     pub app_status: String,
     pub engine_state: String,
     pub provider: String,
+    pub dictation_mode: String,
     pub hotkey: String,
+    pub usage_hint: String,
     pub recovery: String,
     pub last_transcript: String,
 }
@@ -41,6 +48,8 @@ pub struct SettingsDto {
     pub whisper_cpp_binary_path: Option<String>,
     pub whisper_cpp_model_path: Option<String>,
     pub language: String,
+    pub whisper_cpp_prompt_context: String,
+    pub whisper_cpp_pinned_terms: String,
     pub dictation_mode: String,
     pub min_recording_ms: u64,
     pub hotkey: String,
@@ -78,6 +87,8 @@ impl From<AppSettings> for SettingsDto {
                 .model_path
                 .map(path_to_string),
             language: settings.transcription.whisper_cpp.language,
+            whisper_cpp_prompt_context: settings.transcription.whisper_cpp.prompt_context,
+            whisper_cpp_pinned_terms: settings.transcription.whisper_cpp.pinned_terms,
             dictation_mode: dictation_mode_name(settings.dictation.mode).to_string(),
             min_recording_ms: settings.dictation.min_recording_ms,
             hotkey: settings.hotkeys.dictation,
@@ -125,17 +136,54 @@ struct HotkeyStatusSnapshot {
     registered: bool,
 }
 
-type DesktopDictationEngine = DictationEngine<
-    DesktopTargetTracker,
-    CpalAudioRecorder,
-    WhisperCppTranscriber,
-    DefaultTranscriptProcessor,
-    DesktopTextInserter,
->;
+trait RuntimeDictationEngine {
+    fn state(&self) -> DictationState;
+    fn start_recording(&mut self) -> Result<(), DictationError>;
+    fn stop_transcribe_insert(&mut self) -> Result<(), DictationError>;
+    fn cancel(&mut self);
+    fn hotkey(&mut self, event: HotkeyEvent) -> Result<(), DictationError>;
+    fn last_transcript(&self) -> Option<&str>;
+}
+
+impl<Targets, Recorder, Transcriber, Processor, Inserter> RuntimeDictationEngine
+    for DictationEngine<Targets, Recorder, Transcriber, Processor, Inserter>
+where
+    Targets: TargetAppTracker,
+    Recorder: AudioRecorder,
+    Transcriber: TranscriptionProvider,
+    Processor: TranscriptProcessor,
+    Inserter: TextInsertionService,
+{
+    fn state(&self) -> DictationState {
+        DictationEngine::state(self)
+    }
+
+    fn start_recording(&mut self) -> Result<(), DictationError> {
+        DictationEngine::start_recording(self)
+    }
+
+    fn stop_transcribe_insert(&mut self) -> Result<(), DictationError> {
+        DictationEngine::stop_transcribe_insert(self)
+    }
+
+    fn cancel(&mut self) {
+        DictationEngine::cancel(self);
+    }
+
+    fn hotkey(&mut self, event: HotkeyEvent) -> Result<(), DictationError> {
+        DictationEngine::hotkey(self, event)
+    }
+
+    fn last_transcript(&self) -> Option<&str> {
+        DictationEngine::last_transcript(self)
+    }
+}
+
+type BoxedDictationEngine = Box<dyn RuntimeDictationEngine + Send>;
 
 #[derive(Default)]
 struct DictationRuntimeState {
-    engine: Option<DesktopDictationEngine>,
+    engine: Option<BoxedDictationEngine>,
     settings: Option<AppSettings>,
     recovery: Option<RecoveryDto>,
     last_transcript: Option<String>,
@@ -194,7 +242,7 @@ impl AppService {
                 dictation_status
                     .recovery
                     .as_ref()
-                    .map(|error| format!("{}: {}", error.title, error.detail))
+                    .map(format_recovery_summary)
             })
             .unwrap_or(recovery);
 
@@ -202,7 +250,13 @@ impl AppService {
             app_status: app_status_label(dictation_status.state).to_string(),
             engine_state: state_label(dictation_status.state).to_string(),
             provider: settings.transcription.provider.label().to_string(),
+            dictation_mode: dictation_mode_name(settings.dictation.mode).to_string(),
             hotkey: format_hotkey_status(&hotkey_status),
+            usage_hint: usage_hint(
+                settings.dictation.mode,
+                dictation_status.state,
+                &hotkey_status.configured_shortcut,
+            ),
             recovery,
             last_transcript: dictation_status.last_transcript.unwrap_or_default(),
         }
@@ -382,7 +436,7 @@ impl AppService {
 
     fn drive_dictation(
         &self,
-        run: impl FnOnce(&mut DesktopDictationEngine) -> Result<(), DictationError>,
+        run: impl FnOnce(&mut dyn RuntimeDictationEngine) -> Result<(), DictationError>,
     ) -> Result<DictationStatusDto, String> {
         let settings = self
             .settings_store
@@ -399,7 +453,7 @@ impl AppService {
                 .as_mut()
                 .expect("dictation engine should exist after successful setup");
 
-            match run(engine) {
+            match run(engine.as_mut()) {
                 Ok(()) => {
                     runtime.recovery = None;
                     runtime.last_transcript = engine.last_transcript().map(ToString::to_string);
@@ -439,15 +493,15 @@ impl AppService {
 
     fn build_desktop_engine(
         settings: &AppSettings,
-    ) -> Result<DesktopDictationEngine, DictationError> {
-        Ok(DictationEngine::new(
+    ) -> Result<BoxedDictationEngine, DictationError> {
+        Ok(Box::new(DictationEngine::new(
             settings.dictation_config(),
             DesktopTargetTracker::default(),
             CpalAudioRecorder::new(std::env::temp_dir().join("verboscribe2").join("recordings")),
             build_transcriber(settings)?,
             DefaultTranscriptProcessor::new(TranscriptProcessingOptions::default()),
             DesktopTextInserter::default(),
-        ))
+        )))
     }
 
     fn current_dictation_status(&self) -> DictationStatusDto {
@@ -463,14 +517,36 @@ impl AppService {
         config: DictationConfig,
     ) -> DictationEngine<FakeTargets, FakeRecorder, FakeTranscriber, FakeProcessor, FakeInserter>
     {
+        self.fake_engine_with_inserter(config, FakeInserter::succeed())
+    }
+
+    fn fake_engine_with_inserter(
+        &self,
+        config: DictationConfig,
+        inserter: FakeInserter,
+    ) -> DictationEngine<FakeTargets, FakeRecorder, FakeTranscriber, FakeProcessor, FakeInserter>
+    {
         DictationEngine::new(
             config,
             FakeTargets,
             FakeRecorder,
             FakeTranscriber,
             FakeProcessor,
-            FakeInserter,
+            inserter,
         )
+    }
+
+    #[cfg(test)]
+    fn install_test_dictation_engine(&self, settings: AppSettings, engine: BoxedDictationEngine) {
+        self.settings_store
+            .save(&settings)
+            .expect("test settings should save");
+        self.mutate_dictation_runtime(|runtime| {
+            runtime.engine = Some(engine);
+            runtime.settings = Some(settings);
+            runtime.recovery = None;
+            runtime.last_transcript = None;
+        });
     }
 
     pub fn set_hotkey_registered(&self, configured_shortcut: String, active_accelerator: String) {
@@ -588,6 +664,8 @@ impl TryFrom<SettingsDto> for AppSettings {
         settings.transcription.whisper_cpp.model_path =
             dto.whisper_cpp_model_path.map(PathBuf::from);
         settings.transcription.whisper_cpp.language = dto.language;
+        settings.transcription.whisper_cpp.prompt_context = dto.whisper_cpp_prompt_context;
+        settings.transcription.whisper_cpp.pinned_terms = dto.whisper_cpp_pinned_terms;
         settings.dictation.mode = dictation_mode;
         settings.dictation.min_recording_ms = dto.min_recording_ms;
         settings.hotkeys.dictation = dto.hotkey;
@@ -647,6 +725,39 @@ fn format_hotkey_status(status: &HotkeyStatusSnapshot) -> String {
     format!("{} ({})", status.configured_shortcut, details.join(", "))
 }
 
+fn usage_hint(
+    mode: SettingsDictationMode,
+    state: DictationState,
+    configured_shortcut: &str,
+) -> String {
+    match (mode, state) {
+        (SettingsDictationMode::PressAndHold, DictationState::Idle) => {
+            format!("Hold {configured_shortcut} while speaking, then release to transcribe.")
+        }
+        (SettingsDictationMode::PressAndHold, DictationState::Starting) => {
+            format!("Keep holding {configured_shortcut} while recording starts.")
+        }
+        (SettingsDictationMode::PressAndHold, DictationState::Recording) => {
+            format!("Keep holding {configured_shortcut} while speaking. Release to transcribe.")
+        }
+        (SettingsDictationMode::PressAndHold, DictationState::Transcribing) => {
+            "Wait while VerboScribe transcribes and pastes the latest recording.".to_string()
+        }
+        (SettingsDictationMode::Toggle, DictationState::Idle) => {
+            format!("Press {configured_shortcut} to start dictation, then press it again to stop.")
+        }
+        (SettingsDictationMode::Toggle, DictationState::Starting) => {
+            format!("Recording is starting. Press {configured_shortcut} again if you need to stop early.")
+        }
+        (SettingsDictationMode::Toggle, DictationState::Recording) => {
+            format!("Speak now. Press {configured_shortcut} again to stop and transcribe.")
+        }
+        (SettingsDictationMode::Toggle, DictationState::Transcribing) => {
+            "Wait while VerboScribe transcribes and pastes the latest recording.".to_string()
+        }
+    }
+}
+
 fn status_event(phase: &str, message: &str, transcript: Option<String>) -> RuntimeEventDto {
     RuntimeEventDto {
         phase: phase.to_string(),
@@ -678,11 +789,21 @@ fn recovery_for_error(error: &DictationError, platform: RecoveryPlatform) -> Rec
             detail: "VerboScribe cannot record until microphone access is allowed.".to_string(),
             next_step: microphone_permission_step(platform),
         },
-        DictationError::Recording(message) => RecoveryDto {
-            title: "Recording failed".to_string(),
-            detail: message.clone(),
-            next_step: "Check the selected microphone and try recording again.".to_string(),
-        },
+        DictationError::Recording(message) => {
+            if recording_error_is_silent_capture(message) {
+                RecoveryDto {
+                    title: "No microphone signal detected".to_string(),
+                    detail: message.clone(),
+                    next_step: silent_capture_step(platform),
+                }
+            } else {
+                RecoveryDto {
+                    title: "Recording failed".to_string(),
+                    detail: message.clone(),
+                    next_step: "Check the selected microphone and try recording again.".to_string(),
+                }
+            }
+        }
         DictationError::RecordingTooShort => RecoveryDto {
             title: "Recording was too short".to_string(),
             detail:
@@ -696,18 +817,47 @@ fn recovery_for_error(error: &DictationError, platform: RecoveryPlatform) -> Rec
             next_step: "Check the provider binary, model path, and audio file, then retry."
                 .to_string(),
         },
-        DictationError::Paste(message) => RecoveryDto {
-            title: "Paste failed".to_string(),
-            detail: message.clone(),
-            next_step: "The transcript remains available so it can be copied or pasted manually."
-                .to_string(),
-        },
+        DictationError::Paste(message) => paste_recovery(message, platform),
         DictationError::NoTranscript => RecoveryDto {
             title: "No transcript available".to_string(),
             detail: "There is no previous transcript to paste.".to_string(),
             next_step: "Record a new dictation first.".to_string(),
         },
     }
+}
+
+fn format_recovery_summary(recovery: &RecoveryDto) -> String {
+    format!(
+        "{}: {} Next: {}",
+        recovery.title, recovery.detail, recovery.next_step
+    )
+}
+
+fn paste_recovery(message: &str, platform: RecoveryPlatform) -> RecoveryDto {
+    if platform == RecoveryPlatform::Macos && paste_error_needs_accessibility_permission(message) {
+        RecoveryDto {
+            title: "Accessibility permission required".to_string(),
+            detail:
+                "macOS blocked VerboScribe from sending the paste shortcut because Accessibility access is not available."
+                    .to_string(),
+            next_step: "Open System Settings > Privacy & Security > Accessibility and allow VerboScribe 2, then retry dictation."
+                .to_string(),
+        }
+    } else {
+        RecoveryDto {
+            title: "Paste failed".to_string(),
+            detail: message.to_string(),
+            next_step: "The transcript remains available so it can be copied or pasted manually."
+                .to_string(),
+        }
+    }
+}
+
+fn paste_error_needs_accessibility_permission(message: &str) -> bool {
+    let lowercase = message.to_ascii_lowercase();
+    lowercase.contains("not allowed to send keystrokes")
+        || lowercase.contains("accessibility permission is not granted")
+        || (lowercase.contains("system events") && lowercase.contains("1002"))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -741,6 +891,25 @@ fn microphone_permission_step(platform: RecoveryPlatform) -> String {
             "Allow microphone access in the operating system privacy settings.".to_string()
         }
     }
+}
+
+fn silent_capture_step(platform: RecoveryPlatform) -> String {
+    match platform {
+        RecoveryPlatform::Macos => "Open System Settings > Privacy & Security > Microphone and confirm VerboScribe 2 is allowed, then check System Settings > Sound > Input for the active microphone."
+            .to_string(),
+        RecoveryPlatform::Windows => {
+            "Open Settings > Privacy & security > Microphone, allow desktop app access, then confirm the active input device in Sound settings."
+                .to_string()
+        }
+        RecoveryPlatform::Other => {
+            "Check the operating system microphone permission and confirm the active input device."
+                .to_string()
+        }
+    }
+}
+
+fn recording_error_is_silent_capture(message: &str) -> bool {
+    message.contains("captured audio was silent")
 }
 
 fn build_transcriber(settings: &AppSettings) -> Result<WhisperCppTranscriber, DictationError> {
@@ -778,8 +947,38 @@ fn build_transcriber(settings: &AppSettings) -> Result<WhisperCppTranscriber, Di
             .trim()
             .to_string()
     };
+    config.prompt_context = whisper_prompt_context(settings);
 
     Ok(WhisperCppTranscriber::new(config))
+}
+
+fn whisper_prompt_context(settings: &AppSettings) -> String {
+    let user_context = settings.transcription.whisper_cpp.prompt_context.trim();
+    let user_pinned_terms = settings.transcription.whisper_cpp.pinned_terms.trim();
+    if user_context.is_empty() && user_pinned_terms.is_empty() {
+        return default_whisper_prompt_context();
+    }
+
+    let context = if user_context.is_empty() {
+        DEFAULT_WHISPER_PROMPT_CONTEXT.to_string()
+    } else {
+        format!("{DEFAULT_WHISPER_PROMPT_CONTEXT}\n\n{user_context}")
+    };
+
+    let pinned_terms = if user_pinned_terms.is_empty() {
+        DEFAULT_WHISPER_PINNED_TERMS.to_string()
+    } else {
+        format!("{DEFAULT_WHISPER_PINNED_TERMS}\n{user_pinned_terms}")
+    };
+
+    PersonalDictionary::combined_prompt(&context, &pinned_terms)
+}
+
+fn default_whisper_prompt_context() -> String {
+    PersonalDictionary::combined_prompt(
+        DEFAULT_WHISPER_PROMPT_CONTEXT,
+        DEFAULT_WHISPER_PINNED_TERMS,
+    )
 }
 
 struct FakeTargets;
@@ -833,10 +1032,28 @@ impl TranscriptProcessor for FakeProcessor {
     }
 }
 
-struct FakeInserter;
+struct FakeInserter {
+    failure: Option<String>,
+}
+
+impl FakeInserter {
+    fn succeed() -> Self {
+        Self { failure: None }
+    }
+
+    #[cfg(test)]
+    fn fail(message: &str) -> Self {
+        Self {
+            failure: Some(message.to_string()),
+        }
+    }
+}
 
 impl TextInsertionService for FakeInserter {
     fn insert(&mut self, _text: &str, _target: Option<&TargetApp>) -> Result<(), DictationError> {
+        if let Some(message) = &self.failure {
+            return Err(DictationError::Paste(message.clone()));
+        }
         Ok(())
     }
 }
@@ -852,7 +1069,12 @@ mod tests {
 
         assert_eq!(status.engine_state, "Idle");
         assert_eq!(status.provider, "whisper.cpp");
+        assert_eq!(status.dictation_mode, "pressAndHold");
         assert_eq!(status.hotkey, "Control+Option+Space (Not registered)");
+        assert_eq!(
+            status.usage_hint,
+            "Hold Control+Option+Space while speaking, then release to transcribe."
+        );
         assert_eq!(status.recovery, "No recovery needed");
     }
 
@@ -888,6 +1110,57 @@ mod tests {
     }
 
     #[test]
+    fn smoke_dictation_cycle_succeeds_with_injected_adapters() {
+        let (_temp_dir, service) = temp_service();
+        install_smoke_engine(&service, FakeInserter::succeed());
+
+        let started = service.start_dictation().unwrap();
+        let runtime_while_recording = service.runtime_status();
+        let stopped = service.stop_dictation().unwrap();
+        let runtime_after_stop = service.runtime_status();
+
+        assert_eq!(started.state, "Recording");
+        assert_eq!(runtime_while_recording.phase, "recording");
+        assert_eq!(stopped.state, "Idle");
+        assert_eq!(
+            stopped.last_transcript.as_deref(),
+            Some("dry run transcript")
+        );
+        assert_eq!(runtime_after_stop.phase, "succeeded");
+        assert_eq!(
+            runtime_after_stop.transcript.as_deref(),
+            Some("dry run transcript")
+        );
+        assert_eq!(service.app_status().last_transcript, "dry run transcript");
+    }
+
+    #[test]
+    fn smoke_dictation_cycle_preserves_transcript_when_paste_fails() {
+        let (_temp_dir, service) = temp_service();
+        install_smoke_engine(
+            &service,
+            FakeInserter::fail("target app did not accept paste"),
+        );
+
+        service.start_dictation().unwrap();
+        let error = service.stop_dictation().unwrap_err();
+        let runtime_after_failure = service.runtime_status();
+
+        assert!(error.contains("target app did not accept paste"));
+        assert_eq!(runtime_after_failure.phase, "failed");
+        assert_eq!(runtime_after_failure.message, "Paste failed");
+        assert_eq!(
+            runtime_after_failure.transcript.as_deref(),
+            Some("dry run transcript")
+        );
+        assert!(runtime_after_failure
+            .recovery
+            .as_ref()
+            .is_some_and(|recovery| recovery.next_step.contains("remains available")));
+        assert_eq!(service.app_status().last_transcript, "dry run transcript");
+    }
+
+    #[test]
     fn settings_load_creates_defaults() {
         let (_temp_dir, service) = temp_service();
 
@@ -895,6 +1168,8 @@ mod tests {
 
         assert_eq!(settings.provider, "whisperCpp");
         assert_eq!(settings.language, "en");
+        assert_eq!(settings.whisper_cpp_prompt_context, "");
+        assert_eq!(settings.whisper_cpp_pinned_terms, "");
         assert_eq!(settings.dictation_mode, "pressAndHold");
         assert_eq!(settings.hotkey, "Control+Option+Space");
     }
@@ -907,6 +1182,8 @@ mod tests {
             whisper_cpp_binary_path: Some("/bin/whisper-cli".to_string()),
             whisper_cpp_model_path: Some("/models/base.en.bin".to_string()),
             language: "fr".to_string(),
+            whisper_cpp_prompt_context: "Prefer medical vocabulary.".to_string(),
+            whisper_cpp_pinned_terms: "OpenAI, GPT-5".to_string(),
             dictation_mode: "toggle".to_string(),
             min_recording_ms: 400,
             hotkey: "Control+Shift+D".to_string(),
@@ -962,6 +1239,40 @@ mod tests {
     }
 
     #[test]
+    fn app_status_describes_toggle_mode_usage() {
+        let (_temp_dir, service) = temp_service();
+        let mut settings = service.settings().unwrap();
+        settings.dictation_mode = "toggle".to_string();
+        settings.hotkey = "Control+Shift+D".to_string();
+        service.save_settings(settings).unwrap();
+
+        let status = service.app_status();
+
+        assert_eq!(status.dictation_mode, "toggle");
+        assert_eq!(
+            status.usage_hint,
+            "Press Control+Shift+D to start dictation, then press it again to stop."
+        );
+    }
+
+    #[test]
+    fn app_status_includes_recovery_next_step() {
+        let (_temp_dir, service) = temp_service();
+        install_smoke_engine(
+            &service,
+            FakeInserter::fail("target app did not accept paste"),
+        );
+
+        service.start_dictation().unwrap();
+        service.stop_dictation().unwrap_err();
+        let status = service.app_status();
+
+        assert!(status.recovery.contains("Paste failed"));
+        assert!(status.recovery.contains("Next:"));
+        assert!(status.recovery.contains("remains available"));
+    }
+
+    #[test]
     fn start_dictation_surfaces_missing_provider_configuration() {
         let (_temp_dir, service) = temp_service();
 
@@ -975,6 +1286,41 @@ mod tests {
             .recovery
             .as_ref()
             .is_some_and(|recovery| recovery.detail.contains("binary path is not configured")));
+    }
+
+    #[test]
+    fn build_transcriber_includes_default_prompt_context() {
+        let mut settings = AppSettings::default();
+        settings.transcription.whisper_cpp.binary_path = Some("/bin/whisper-cli".into());
+        settings.transcription.whisper_cpp.model_path = Some("/models/base.en.bin".into());
+
+        let transcriber = build_transcriber(&settings).unwrap();
+        let prompt = &transcriber.config().prompt_context;
+
+        assert!(prompt.contains("VerboScribe 2"));
+        assert!(prompt.contains("whisper.cpp"));
+        assert!(prompt.contains("TextEdit"));
+    }
+
+    #[test]
+    fn build_transcriber_merges_default_and_user_prompt_terms() {
+        let mut settings = AppSettings::default();
+        settings.transcription.whisper_cpp.binary_path = Some("/bin/whisper-cli".into());
+        settings.transcription.whisper_cpp.model_path = Some("/models/base.en.bin".into());
+        settings.transcription.whisper_cpp.prompt_context =
+            "Prefer engineering and product vocabulary when heard clearly.".to_string();
+        settings.transcription.whisper_cpp.pinned_terms =
+            "Padres, Petco Park, VerboScribe".to_string();
+
+        let transcriber = build_transcriber(&settings).unwrap();
+        let prompt = &transcriber.config().prompt_context;
+
+        assert!(prompt.contains(DEFAULT_WHISPER_PROMPT_CONTEXT));
+        assert!(prompt.contains("Prefer engineering and product vocabulary"));
+        assert!(prompt.contains("Padres"));
+        assert!(prompt.contains("Petco Park"));
+        assert!(prompt.contains("VerboScribe 2"));
+        assert_eq!(prompt.matches("Padres").count(), 1);
     }
 
     #[test]
@@ -992,6 +1338,65 @@ mod tests {
             .unwrap()
             .next_step
             .contains("remains available"));
+    }
+
+    #[test]
+    fn paste_failure_event_maps_macos_accessibility_denial_to_permission_recovery() {
+        let event = recovery_event(
+            DictationError::Paste(
+                "paste shortcut failed: Accessibility permission is not granted to VerboScribe 2"
+                    .to_string(),
+            ),
+            Some("preserved transcript".to_string()),
+            RecoveryPlatform::Macos,
+        );
+
+        let recovery = event.recovery.unwrap();
+
+        assert_eq!(recovery.title, "Accessibility permission required");
+        assert!(recovery.detail.contains("Accessibility access"));
+        assert!(recovery
+            .next_step
+            .contains("Accessibility and allow VerboScribe 2"));
+    }
+
+    #[test]
+    fn paste_failure_event_maps_legacy_system_events_denial_to_permission_recovery() {
+        let event = recovery_event(
+            DictationError::Paste(
+                "paste shortcut failed: 36:38: execution error: System Events got an error: osascript is not allowed to send keystrokes. (1002)"
+                    .to_string(),
+            ),
+            Some("preserved transcript".to_string()),
+            RecoveryPlatform::Macos,
+        );
+
+        let recovery = event.recovery.unwrap();
+
+        assert_eq!(recovery.title, "Accessibility permission required");
+        assert!(recovery
+            .next_step
+            .contains("Accessibility and allow VerboScribe 2"));
+    }
+
+    #[test]
+    fn silent_capture_recording_failure_maps_to_microphone_signal_recovery() {
+        let event = recovery_event(
+            DictationError::Recording(
+                "captured audio was silent; check Microphone permission and the selected input device, then try again."
+                    .to_string(),
+            ),
+            None,
+            RecoveryPlatform::Macos,
+        );
+
+        let recovery = event.recovery.unwrap();
+
+        assert_eq!(recovery.title, "No microphone signal detected");
+        assert!(recovery
+            .next_step
+            .contains("Privacy & Security > Microphone"));
+        assert!(recovery.next_step.contains("Sound > Input"));
     }
 
     #[test]
@@ -1013,5 +1418,12 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let store = JsonSettingsStore::new(temp_dir.path().join("settings.json"));
         (temp_dir, AppService::new(store))
+    }
+
+    fn install_smoke_engine(service: &AppService, inserter: FakeInserter) {
+        let mut settings = AppSettings::default();
+        settings.dictation.min_recording_ms = 1;
+        let engine = service.fake_engine_with_inserter(settings.dictation_config(), inserter);
+        service.install_test_dictation_engine(settings, Box::new(engine));
     }
 }

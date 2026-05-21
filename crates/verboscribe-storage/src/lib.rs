@@ -79,6 +79,10 @@ pub struct WhisperCppSettings {
     pub binary_path: Option<PathBuf>,
     pub model_path: Option<PathBuf>,
     pub language: String,
+    #[serde(default)]
+    pub prompt_context: String,
+    #[serde(default)]
+    pub pinned_terms: String,
 }
 
 impl Default for WhisperCppSettings {
@@ -87,6 +91,8 @@ impl Default for WhisperCppSettings {
             binary_path: None,
             model_path: None,
             language: DEFAULT_LANGUAGE.to_string(),
+            prompt_context: String::new(),
+            pinned_terms: String::new(),
         }
     }
 }
@@ -267,6 +273,8 @@ mod tests {
         );
         assert_eq!(settings.transcription.provider.label(), "whisper.cpp");
         assert_eq!(settings.transcription.whisper_cpp.language, "en");
+        assert_eq!(settings.transcription.whisper_cpp.prompt_context, "");
+        assert_eq!(settings.transcription.whisper_cpp.pinned_terms, "");
         assert_eq!(settings.dictation.mode, SettingsDictationMode::PressAndHold);
         assert_eq!(settings.dictation.min_recording_ms, 1_000);
         assert_eq!(settings.hotkeys.dictation, "Control+Option+Space");
@@ -314,12 +322,48 @@ mod tests {
             Some(PathBuf::from("/usr/bin/whisper-cli"));
         settings.transcription.whisper_cpp.model_path = Some(PathBuf::from("/models/base.en.bin"));
         settings.transcription.whisper_cpp.language = "es".to_string();
+        settings.transcription.whisper_cpp.prompt_context =
+            "Prefer medical vocabulary when heard clearly.".to_string();
+        settings.transcription.whisper_cpp.pinned_terms = "OpenAI, GPT-5".to_string();
         settings.dictation.mode = SettingsDictationMode::Toggle;
         settings.hotkeys.dictation = "Control+Shift+D".to_string();
 
         store.save(&settings).unwrap();
 
         assert_eq!(store.load().unwrap(), settings);
+    }
+
+    #[test]
+    fn load_legacy_settings_without_prompt_fields_uses_defaults() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("settings.json");
+        fs::write(
+            &path,
+            r#"{
+  "schemaVersion": 1,
+  "transcription": {
+    "provider": "whisperCpp",
+    "whisperCpp": {
+      "binaryPath": "/usr/bin/whisper-cli",
+      "modelPath": "/models/base.en.bin",
+      "language": "en"
+    }
+  },
+  "dictation": {
+    "mode": "pressAndHold",
+    "minRecordingMs": 1000
+  },
+  "hotkeys": {
+    "dictation": "Control+Option+Space"
+  }
+}"#,
+        )
+        .unwrap();
+
+        let settings = JsonSettingsStore::new(&path).load().unwrap();
+
+        assert_eq!(settings.transcription.whisper_cpp.prompt_context, "");
+        assert_eq!(settings.transcription.whisper_cpp.pinned_terms, "");
     }
 
     #[test]
