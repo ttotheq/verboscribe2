@@ -5,6 +5,12 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use crate::app_service::{AppService, HotkeyEventState};
 
+fn debug_hotkeys(message: impl AsRef<str>) {
+    if std::env::var_os("VERBOSCRIBE_DEBUG_HOTKEYS").is_some() {
+        eprintln!("[verboscribe hotkeys] {}", message.as_ref());
+    }
+}
+
 pub fn install<R: Runtime>(
     app: &mut App<R>,
     service: AppService,
@@ -16,15 +22,28 @@ pub fn install<R: Runtime>(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |_app, _shortcut, event| match event.state() {
                     ShortcutState::Pressed => {
-                        let _ = handler_service.handle_hotkey_event(HotkeyEventState::Pressed);
+                        debug_hotkeys("received pressed event");
+                        if let Err(error) =
+                            handler_service.handle_hotkey_event(HotkeyEventState::Pressed)
+                        {
+                            debug_hotkeys(format!("pressed event failed: {error}"));
+                        }
                     }
                     ShortcutState::Released => {
-                        let _ = handler_service.handle_hotkey_event(HotkeyEventState::Released);
+                        debug_hotkeys("received released event");
+                        if let Err(error) =
+                            handler_service.handle_hotkey_event(HotkeyEventState::Released)
+                        {
+                            debug_hotkeys(format!("released event failed: {error}"));
+                        }
                     }
                 })
                 .build(),
         )?;
-        let _ = register_from_settings(&app.handle(), &service);
+        debug_hotkeys("plugin installed");
+        if let Err(error) = register_from_settings(&app.handle(), &service) {
+            debug_hotkeys(format!("initial registration failed: {error}"));
+        }
     }
 
     Ok(())
@@ -45,16 +64,23 @@ pub fn register_from_settings<R: Runtime>(
         let settings = service.settings()?;
         let configured_shortcut = settings.hotkey;
         let accelerator = normalize_hotkey_accelerator(&configured_shortcut)?;
+        debug_hotkeys(format!(
+            "register requested: configured='{configured_shortcut}' accelerator='{accelerator}'"
+        ));
 
         if let Some(active_accelerator) = service.active_hotkey_accelerator() {
             if active_accelerator == accelerator {
                 service.set_hotkey_registered(configured_shortcut, accelerator);
+                debug_hotkeys("register skipped: accelerator already active");
                 return Ok(());
             }
 
             app.global_shortcut()
                 .unregister(active_accelerator.as_str())
                 .map_err(|error| error.to_string())?;
+            debug_hotkeys(format!(
+                "unregistered previous accelerator '{active_accelerator}'"
+            ));
         }
 
         app.global_shortcut()
@@ -66,6 +92,7 @@ pub fn register_from_settings<R: Runtime>(
             })?;
 
         service.set_hotkey_registered(configured_shortcut, accelerator);
+        debug_hotkeys("register succeeded");
         Ok(())
     }
 }
@@ -91,6 +118,7 @@ pub fn unregister_current<R: Runtime>(
             app.global_shortcut()
                 .unregister(active_accelerator.as_str())
                 .map_err(|error| error.to_string())?;
+            debug_hotkeys(format!("unregister succeeded: '{active_accelerator}'"));
         }
 
         service.clear_hotkey_registration(configured_shortcut);

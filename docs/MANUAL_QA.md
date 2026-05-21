@@ -7,7 +7,27 @@ Run manual QA against packaged builds whenever possible.
 - App launches without a terminal.
 - Tray/menu-bar icon appears.
 - Main window can be shown from tray/menu-bar.
-- Settings surface displays status, provider, hotkey, and recovery text.
+- Settings surface displays editable provider paths, language, dictation mode,
+  hotkey, prompt context, pinned terms, live status, and recovery text.
+
+## Settings Surface
+
+- Treat every edited field in the desktop form as a draft until
+  `Save settings to apply` succeeds.
+- Saving settings persists the edited values after app relaunch.
+- Saving settings re-applies the configured dictation hotkey without leaving a
+  stale registration behind.
+- After changing any surfaced setting such as dictation mode, hotkey, binary
+  path, model path, language, prompt context, or pinned terms, save first and
+  then verify behavior or persisted value instead of assuming the live runtime
+  updated immediately.
+- For toggle-mode QA specifically, confirm the second hotkey press stops
+  recording only after the mode change has been saved.
+- Manual start, stop, and cancel buttons remain visible in packaged builds and
+  drive the same runtime status surface as the hotkey path.
+- The prototype-gap note in the desktop UI still calls out intentionally
+  missing controls such as paste-last, preview/edit, cleanup/style/snippets,
+  history, insights, model install/refresh, and launch behavior.
 
 ## Vertical Slice
 
@@ -18,6 +38,53 @@ Run manual QA against packaged builds whenever possible.
 5. Stop recording.
 6. Confirm the transcript inserts into the original target app.
 7. Confirm the last transcript is visible in VerboScribe 2.
+
+Latest macOS note from 2026-05-13:
+
+- The current default shortcut is `Control+Option+Space` in press-and-hold
+  mode, so the key must stay held while speaking.
+- A real macOS pass inserted transcript text into Notes, confirming the default
+  hotkey-to-paste path works.
+- The recognized text on a short built-in-mic phrase was only `you`, so audio
+  quality and spoken-phrase QA remain open even though insertion worked.
+
+Latest macOS note from 2026-05-15:
+
+- A packaged-app QA pass from the terminal reached recording and transcription,
+  then failed at paste with `System Events got an error: osascript is not
+  allowed to send keystrokes. (1002)`.
+- This confirms the Accessibility-denied paste fallback path is reachable on
+  macOS. The transcript should remain available for manual paste.
+- Expected operator recovery is now: open `System Settings > Privacy &
+  Security > Accessibility`, allow `VerboScribe 2`, then retry.
+- The macOS paste path now avoids `System Events` and sends `Cmd+V` directly
+  from the app process, so the earlier terminal-specific workaround should no
+  longer be needed once the app is rebuilt and rerun.
+- After Accessibility was allowed, a live hotkey run that spoke `hello, hello,
+  hello` pasted `you`, confirming the end-to-end hotkey-to-paste path works but
+  live built-in-mic transcription quality is still weak on this machine.
+- Inspection of the latest live-capture artifact on 2026-05-15 showed the
+  generated 5-second WAV was valid but contained all-zero samples, so the live
+  app is currently feeding silence to `whisper.cpp` on this machine.
+- After adding `NSMicrophoneUsageDescription` to the packaged app bundle and
+  resetting macOS microphone approval for `local.verboscribe2`, a fresh live
+  hotkey run pasted `Testing verbose scribe dictation in text edit 1 2 3`.
+- After switching the debug bundle to stable local signing and deleting the
+  stale `/Applications/VerboScribe 2.app` copy, a rebuild-and-retest pasted
+  `Testing VerboScribe dictation in TextEdit. 1, 2, 3.` without re-adding
+  Accessibility permission.
+- A packaged-app microphone-denied retest on 2026-05-15 reported the expected
+  recovery guidance instead of recording or pasting, closing that denial path.
+- A packaged-app Accessibility-denied retest on 2026-05-15 failed automatic
+  paste, reported the expected Accessibility recovery guidance, and manual
+  `Cmd+V` pasted the exact preserved dictation text, closing that denial path.
+- The latest live-capture WAV is now non-zero and `whisper.cpp` is receiving
+  real speech again, so the remaining macOS issue is recognition quality and
+  formatting, not silent capture or paste failure.
+- For quality QA, do not use a clipped one-word utterance as the only check.
+  Hold the hotkey, wait about half a second, speak a distinct 3 to 5 second
+  phrase such as `Testing VerboScribe dictation in TextEdit one two three`,
+  keep holding briefly after speaking, then release.
 
 macOS target apps:
 
@@ -41,6 +108,11 @@ Windows target apps:
   text instead of hanging the dictation flow.
 - After a successful dictation, the last transcript should remain visible in the
   app status surface after insertion succeeds.
+- For QA without the Tauri hotkey layer, use
+  `cargo run -p verboscribe2-desktop --example live_dictation_probe -- 6000`
+  with a target editor frontmost. On 2026-05-13 this inserted
+  `Testing verb ascribe dictation.` into TextEdit and preserved the same text
+  on the clipboard.
 
 ## Failure Recovery
 

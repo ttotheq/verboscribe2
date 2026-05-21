@@ -16,6 +16,7 @@ const APP_IDENTIFIER: &str = "local.verboscribe2";
 const APP_NAME: &str = "VerboScribe 2";
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
 const ACTIVATE_SETTLE_DELAY: Duration = Duration::from_millis(120);
+const MACOS_DIRECT_PASTE_PROGRAM: &str = "__verboscribe_macos_direct_paste__";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlatformKind {
@@ -48,6 +49,10 @@ pub struct StdCommandRunner;
 
 impl CommandRunner for StdCommandRunner {
     fn run(&self, command: &PlatformCommand, timeout: Duration) -> Result<CommandOutput, String> {
+        if let Some(output) = run_builtin_command(command)? {
+            return Ok(output);
+        }
+
         let mut child = Command::new(&command.program)
             .args(&command.args)
             .stdin(if command.stdin.is_some() {
@@ -100,6 +105,21 @@ impl CommandRunner for StdCommandRunner {
             }
         }
     }
+}
+
+fn run_builtin_command(command: &PlatformCommand) -> Result<Option<CommandOutput>, String> {
+    if command.program != MACOS_DIRECT_PASTE_PROGRAM {
+        return Ok(None);
+    }
+
+    run_macos_direct_paste().map(|_| {
+        Some(CommandOutput {
+            success: true,
+            status: "builtin".to_string(),
+            stdout: String::new(),
+            stderr: String::new(),
+        })
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -303,11 +323,8 @@ fn activate_target_command(
                 })?;
 
             Ok(Some(PlatformCommand {
-                program: "osascript".to_string(),
-                args: vec![
-                    "-e".to_string(),
-                    format!(r#"tell application id "{bundle_id}" to activate"#),
-                ],
+                program: "/usr/bin/open".to_string(),
+                args: vec!["-b".to_string(), bundle_id.to_string()],
                 stdin: None,
             }))
         }
@@ -345,12 +362,8 @@ fn paste_command(
 
     match platform {
         PlatformKind::Macos => Ok(PlatformCommand {
-            program: "osascript".to_string(),
-            args: vec![
-                "-e".to_string(),
-                r#"tell application "System Events" to keystroke "v" using command down"#
-                    .to_string(),
-            ],
+            program: MACOS_DIRECT_PASTE_PROGRAM.to_string(),
+            args: Vec::new(),
             stdin: None,
         }),
         PlatformKind::Windows => Ok(PlatformCommand {
@@ -494,6 +507,85 @@ Add-Type -AssemblyName System.Windows.Forms;
     .to_string()
 }
 
+#[cfg(target_os = "macos")]
+fn run_macos_direct_paste() -> Result<(), String> {
+    use std::ffi::c_void;
+
+    type CGEventFlags = u64;
+    type CGEventRef = *mut c_void;
+    type CGEventSourceRef = *mut c_void;
+    type CGEventSourceStateID = i32;
+    type CGEventTapLocation = u32;
+    type CGKeyCode = u16;
+    type Boolean = u8;
+
+    const KCG_EVENT_FLAG_MASK_COMMAND: CGEventFlags = 0x0010_0000;
+    const KCG_HID_EVENT_TAP: CGEventTapLocation = 0;
+    const KCG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE: CGEventSourceStateID = 1;
+    const KVK_ANSI_V: CGKeyCode = 9;
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    unsafe extern "C" {
+        fn AXIsProcessTrusted() -> Boolean;
+        fn CGEventSourceCreate(state_id: CGEventSourceStateID) -> CGEventSourceRef;
+        fn CGEventCreateKeyboardEvent(
+            source: CGEventSourceRef,
+            virtual_key: CGKeyCode,
+            key_down: bool,
+        ) -> CGEventRef;
+        fn CGEventSetFlags(event: CGEventRef, flags: CGEventFlags);
+        fn CGEventPost(tap: CGEventTapLocation, event: CGEventRef);
+    }
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    unsafe extern "C" {
+        fn CFRelease(value: *const c_void);
+    }
+
+    struct CfGuard(*mut c_void);
+
+    impl Drop for CfGuard {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                unsafe { CFRelease(self.0.cast_const()) };
+            }
+        }
+    }
+
+    unsafe {
+        if AXIsProcessTrusted() == 0 {
+            return Err("Accessibility permission is not granted to VerboScribe 2".to_string());
+        }
+
+        let source = CfGuard(CGEventSourceCreate(KCG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE));
+        if source.0.is_null() {
+            return Err("could not create macOS event source".to_string());
+        }
+
+        let key_down = CfGuard(CGEventCreateKeyboardEvent(source.0, KVK_ANSI_V, true));
+        if key_down.0.is_null() {
+            return Err("could not create macOS key-down event".to_string());
+        }
+        CGEventSetFlags(key_down.0, KCG_EVENT_FLAG_MASK_COMMAND);
+
+        let key_up = CfGuard(CGEventCreateKeyboardEvent(source.0, KVK_ANSI_V, false));
+        if key_up.0.is_null() {
+            return Err("could not create macOS key-up event".to_string());
+        }
+        CGEventSetFlags(key_up.0, KCG_EVENT_FLAG_MASK_COMMAND);
+
+        CGEventPost(KCG_HID_EVENT_TAP, key_down.0);
+        CGEventPost(KCG_HID_EVENT_TAP, key_up.0);
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn run_macos_direct_paste() -> Result<(), String> {
+    Err("direct macOS paste is not available on this platform".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -626,8 +718,8 @@ mod tests {
         assert!(error.to_string().contains("paste shortcut failed"));
         assert_eq!(commands.len(), 3);
         assert_eq!(commands[0].program, "pbcopy");
-        assert_eq!(commands[1].program, "osascript");
-        assert_eq!(commands[2].program, "osascript");
+        assert_eq!(commands[1].program, "/usr/bin/open");
+        assert_eq!(commands[2].program, MACOS_DIRECT_PASTE_PROGRAM);
     }
 
     #[test]
@@ -641,5 +733,36 @@ mod tests {
 
         assert_eq!(command.program, "powershell");
         assert!(command.args.iter().any(|arg| arg.contains("SendWait")));
+    }
+
+    #[test]
+    fn macos_activate_command_uses_open_by_bundle_identifier() {
+        let target = TargetApp {
+            name: Some("TextEdit".to_string()),
+            identifier: Some("macos:bundle:com.apple.TextEdit".to_string()),
+        };
+
+        let command = activate_target_command(PlatformKind::Macos, &target)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(command.program, "/usr/bin/open");
+        assert_eq!(
+            command.args,
+            vec!["-b".to_string(), "com.apple.TextEdit".to_string()]
+        );
+    }
+
+    #[test]
+    fn macos_paste_command_uses_direct_paste_builtin() {
+        let target = TargetApp {
+            name: Some("TextEdit".to_string()),
+            identifier: Some("macos:bundle:com.apple.TextEdit".to_string()),
+        };
+
+        let command = paste_command(PlatformKind::Macos, &target).unwrap();
+
+        assert_eq!(command.program, MACOS_DIRECT_PASTE_PROGRAM);
+        assert!(command.args.is_empty());
     }
 }

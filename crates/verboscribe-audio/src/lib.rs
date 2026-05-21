@@ -14,6 +14,11 @@ use verboscribe_core::{AudioCapture, AudioRecorder, DictationError};
 pub const TARGET_SAMPLE_RATE: u32 = 16_000;
 pub const TARGET_CHANNELS: u16 = 1;
 pub const TARGET_BITS_PER_SAMPLE: u16 = 16;
+const SPEECH_DETECTION_FLOOR: f32 = 0.003;
+const SPEECH_DETECTION_RATIO: f32 = 0.02;
+const SPEECH_PADDING_MS: u32 = 120;
+const NORMALIZATION_TARGET_PEAK: f32 = 0.85;
+const NORMALIZATION_MAX_GAIN: f32 = 4.0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WavInfo {
@@ -249,6 +254,12 @@ impl AudioRecorder for CpalAudioRecorder {
             TARGET_SAMPLE_RATE,
         )
         .map_err(map_audio_error)?;
+        if did_capture_audio && normalized_samples.iter().all(|sample| *sample == 0) {
+            return Err(DictationError::Recording(
+                "captured audio was silent; check Microphone permission and the selected input device, then try again."
+                    .to_string(),
+            ));
+        }
         let duration_ms = if did_capture_audio {
             wav.duration_ms
                 .max(started_at.elapsed().as_millis() as u64)
@@ -442,7 +453,10 @@ fn normalize_captured_samples(samples: &[f32], channels: u16, source_rate: u32) 
     } else {
         resample_linear(&mono, source_rate, TARGET_SAMPLE_RATE)
     };
-    resampled.into_iter().map(f32_sample_to_i16).collect()
+    let trimmed = trim_detected_speech(&resampled, TARGET_SAMPLE_RATE);
+    let leveled = normalize_peak(&trimmed);
+
+    leveled.into_iter().map(f32_sample_to_i16).collect()
 }
 
 fn downmix_to_mono(samples: &[f32], channels: u16) -> Vec<f32> {
@@ -483,6 +497,56 @@ fn resample_linear(samples: &[f32], source_rate: u32, target_rate: u32) -> Vec<f
     }
 
     resampled
+}
+
+fn trim_detected_speech(samples: &[f32], sample_rate: u32) -> Vec<f32> {
+    if samples.is_empty() || sample_rate == 0 {
+        return samples.to_vec();
+    }
+
+    let peak = peak_abs_sample(samples);
+    if peak == 0.0 {
+        return samples.to_vec();
+    }
+
+    let threshold = (peak * SPEECH_DETECTION_RATIO).max(SPEECH_DETECTION_FLOOR);
+    let Some(first_signal) = samples.iter().position(|sample| sample.abs() >= threshold) else {
+        return samples.to_vec();
+    };
+    let Some(last_signal) = samples.iter().rposition(|sample| sample.abs() >= threshold) else {
+        return samples.to_vec();
+    };
+
+    let padding = ((sample_rate as u64 * u64::from(SPEECH_PADDING_MS)) / 1_000) as usize;
+    let start = first_signal.saturating_sub(padding);
+    let end = last_signal
+        .saturating_add(padding)
+        .min(samples.len().saturating_sub(1));
+
+    samples[start..=end].to_vec()
+}
+
+fn normalize_peak(samples: &[f32]) -> Vec<f32> {
+    let peak = peak_abs_sample(samples);
+    if peak == 0.0 {
+        return samples.to_vec();
+    }
+
+    let gain = (NORMALIZATION_TARGET_PEAK / peak).min(NORMALIZATION_MAX_GAIN);
+    if gain <= 1.0 {
+        return samples.to_vec();
+    }
+
+    samples
+        .iter()
+        .map(|sample| (*sample * gain).clamp(-1.0, 1.0))
+        .collect()
+}
+
+fn peak_abs_sample(samples: &[f32]) -> f32 {
+    samples
+        .iter()
+        .fold(0.0_f32, |peak, sample| peak.max(sample.abs()))
 }
 
 fn duration_ms(sample_count: u32, sample_rate: u32) -> u64 {
@@ -636,10 +700,27 @@ mod tests {
 
     #[test]
     fn normalize_capture_downmixes_and_resamples_to_target_contract() {
-        let normalized = normalize_captured_samples(&[0.0, 1.0, 1.0, 0.0], 2, 8_000);
+        let normalized = normalize_captured_samples(&[0.5, 0.5, 1.0, 1.0], 2, 8_000);
 
         assert_eq!(normalized.len(), 4);
         assert_eq!(normalized[0], f32_sample_to_i16(0.5));
+    }
+
+    #[test]
+    fn normalize_capture_trims_dead_air_and_boosts_low_speech() {
+        let mut captured = vec![0.0; 4_000];
+        captured.extend(std::iter::repeat_n(0.08_f32, 400));
+        captured.extend(vec![0.0; 4_000]);
+
+        let normalized = normalize_captured_samples(&captured, 1, TARGET_SAMPLE_RATE);
+        let peak = normalized
+            .iter()
+            .map(|sample| i32::from(sample.abs()))
+            .max()
+            .unwrap();
+
+        assert!(normalized.len() < captured.len());
+        assert!(peak > i32::from(f32_sample_to_i16(0.08).abs()));
     }
 
     #[test]
@@ -687,6 +768,26 @@ mod tests {
         assert_eq!(info.sample_rate, TARGET_SAMPLE_RATE);
         assert_eq!(info.channels, TARGET_CHANNELS);
         assert!(capture.duration_ms > 0);
+    }
+
+    #[test]
+    fn stop_reports_silent_capture_when_samples_are_all_zero() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("silent.wav");
+        let mut recorder = CpalAudioRecorder::new(directory.path());
+        recorder.state = RecorderState::Recording(fake_recording_session(
+            path.clone(),
+            vec![0.0; TARGET_SAMPLE_RATE as usize],
+            TARGET_SAMPLE_RATE,
+            TARGET_CHANNELS,
+        ));
+
+        let error = recorder.stop().unwrap_err();
+        let info = validate_wav_for_transcription(&path).unwrap();
+
+        assert!(error.to_string().contains("captured audio was silent"));
+        assert_eq!(info.sample_rate, TARGET_SAMPLE_RATE);
+        assert_eq!(info.channels, TARGET_CHANNELS);
     }
 
     #[test]
