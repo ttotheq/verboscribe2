@@ -6,10 +6,17 @@ use tauri::{
     image::Image,
     menu::MenuBuilder,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    App, AppHandle, Manager, Runtime,
+    ActivationPolicy, App, AppHandle, Manager, Runtime,
 };
 
 pub use app_service::{AppService, AppStatusDto, DictationStatusDto, RuntimeEventDto, SettingsDto};
+
+const TRAY_SHOW_ID: &str = "tray-show";
+const TRAY_QUIT_ID: &str = "tray-quit";
+const TRAY_TOOLTIP: &str = "VerboScribe 2";
+const TRAY_ID: &str = "main";
+const TRAY_ICON_BYTES: &[u8] =
+    include_bytes!("../icons/concepts/verboscribe2-mark-concept-v1-32.png");
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -17,6 +24,8 @@ pub fn run() {
     tauri::Builder::default()
         .manage(service.clone())
         .setup(move |app| {
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(ActivationPolicy::Regular);
             install_tray(app)?;
             hotkeys::install(app, service.clone())
         })
@@ -37,12 +46,6 @@ pub fn run() {
         .expect("error while running VerboScribe 2");
 }
 
-const TRAY_SHOW_ID: &str = "tray-show";
-const TRAY_QUIT_ID: &str = "tray-quit";
-const TRAY_TOOLTIP: &str = "VerboScribe 2";
-const TRAY_ICON_BYTES: &[u8] =
-    include_bytes!("../icons/concepts/verboscribe2-mark-concept-v1-32.png");
-
 fn install_tray<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
     let tray_menu = MenuBuilder::new(app)
         .text(TRAY_SHOW_ID, "Show VerboScribe 2")
@@ -52,11 +55,11 @@ fn install_tray<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
 
     let tray_icon = load_tray_icon()?;
 
-    TrayIconBuilder::with_id("main")
+    let tray_builder = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&tray_menu)
         .icon(tray_icon)
-        .tooltip(TRAY_TOOLTIP)
         .icon_as_template(false)
+        .tooltip(TRAY_TOOLTIP)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             TRAY_SHOW_ID => show_main_window(app),
@@ -74,20 +77,23 @@ fn install_tray<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
             ) {
                 show_main_window(tray.app_handle());
             }
-        })
-        .build(app)?;
+        });
 
-    if let Some(window) = app.get_webview_window("main") {
-        if let Some(icon) = app.default_window_icon().cloned() {
-            let _ = window.set_icon(icon);
-        }
-    }
-
+    let _tray = tray_builder.build(app)?;
+    sync_window_icon(app);
     Ok(())
 }
 
 fn load_tray_icon() -> tauri::Result<Image<'static>> {
     Image::from_bytes(TRAY_ICON_BYTES).map(Image::to_owned)
+}
+
+fn sync_window_icon<R: Runtime>(app: &App<R>) {
+    if let Some(window) = app.get_webview_window("main") {
+        if let Some(icon) = app.default_window_icon().cloned() {
+            let _ = window.set_icon(icon);
+        }
+    }
 }
 
 fn show_main_window<R: Runtime>(app: &AppHandle<R>) {

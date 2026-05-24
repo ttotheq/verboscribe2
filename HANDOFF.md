@@ -1,7 +1,9 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-05-20, after splitting the Sprint 9 and Sprint 10 work into
-reviewable commits and refreshing handoff state.
+Last updated: 2026-05-24, after diagnosing why the macOS menu-bar icon was
+invisible on macOS Tahoe (notch placement, not rendering), and reverting from
+the custom AppKit `NSStatusItem` path back to Tauri's built-in tray-icon API
+unified across macOS/Windows/Linux.
 
 ## Resume First
 
@@ -30,13 +32,15 @@ cargo run -p verboscribe2-desktop --example live_dictation_probe -- 6000
 
 Expected current result:
 
-- `git status --short` prints no output on this branch after the docs refresh
-  commit from this session.
+- `git status --short` prints this dirty worktree at this handoff:
+  `M HANDOFF.md`, `M apps/desktop/src-tauri/src/lib.rs`.
 - `cargo fmt --all -- --check` passes.
 - `./scripts/verify.sh` passes.
 - `./scripts/smoke-app-service.sh` passes.
 - `./scripts/smoke-local-fixtures.sh` passes on this machine and includes:
   `And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country.`
+- `./script/build_and_run.sh --verify` passes and rebuilds the bundled macOS
+  app at `target/debug/bundle/macos/VerboScribe 2.app`.
 
 ## Current Project State
 
@@ -90,8 +94,10 @@ Current branch:
 - `feature/sprint-9-quality-hardening`
 - branch purpose: carry the Sprint 9 macOS QA truth-telling work and the
   Sprint 10 desktop settings surface foundation on the same integration branch
-- expected worktree state at this handoff: clean after the final docs commit in
-  this session
+- expected worktree state at this handoff: dirty with the macOS menu-bar icon
+  diagnosis and Tauri-tray revert (`M HANDOFF.md`,
+  `M apps/desktop/src-tauri/src/lib.rs`); the prior `?? macos_status_item.rs`
+  custom AppKit module was removed during this session
 - branch divergence from `origin/main` at handoff time: ahead by 17 commits
 - latest session commits:
   - `b0b90a0 feat(desktop): replace the status shell with a settings surface`
@@ -156,6 +162,39 @@ Recent implementation and planning updates:
 - Added default `whisper.cpp` prompt context for `VerboScribe`, `VerboScribe 2`,
   `whisper.cpp`, and `TextEdit` so the local model gets a lightweight bias
   toward product and app names.
+- Reverted the macOS menu-bar code back to Tauri's built-in tray-icon API,
+  unified with the Windows/Linux path; the prior custom AppKit
+  `NSStatusItem`/`NSMenu` bridge and its `objc2` + `objc2-app-kit` +
+  `objc2-foundation` dependencies were removed.
+- Kept `ActivationPolicy::Regular` on macOS so the Dock icon stays present
+  alongside the menu-bar extra.
+- The tray icon now loads from
+  `apps/desktop/src-tauri/icons/concepts/verboscribe2-mark-concept-v1-32.png`
+  with `icon_as_template(false)` so the full-color VS2 mark renders instead
+  of the alpha-only template silhouette (template mode produced a solid white
+  block because the source PNG is fully opaque).
+- The menu still exposes `Show VerboScribe 2` and `Quit VerboScribe 2`.
+- Root-cause for the prior "icon doesn't appear" report on this MacBook Air
+  M3 was diagnosed as **macOS Tahoe per-app extras placement around the
+  notch**, not a rendering bug:
+  - `NSScreen.auxiliaryTopLeftArea` and `auxiliaryTopRightArea` report the
+    notch occupying `x = 646..825` on this 1470-wide logical screen.
+  - macOS places per-app extras left-to-right in registration order; when
+    other apps (WeatherMenu, RoboForm, Ollama) already occupy slots right
+    of the notch, newcomers land in the leftmost slot at roughly
+    `x = 805..841`, mostly behind the notch with only ~14 px visible past
+    the notch's right edge before the next extra starts.
+  - Both the prior custom AppKit `NSStatusItem` and Tauri's tray-icon
+    produced the same invisible-behind-notch result; `Accessory` vs
+    `Regular` activation policy did not change the placement.
+  - The accessible workaround is to Cmd-drag the VS2 extra to a position
+    right of the existing per-app extras, or to quit one of the other
+    menu-bar apps so the leftmost slot moves past the notch on next launch.
+    macOS remembers the new ordering across relaunches.
+  - System-wide capacity for menu-bar extras is governed by Control Center
+    module visibility (System Settings → Control Center) and any third-party
+    menu-bar manager (Ice, Bartender, etc.); it is not something the app
+    can change.
 - Persisted optional `whisper.cpp` prompt overrides in `settings.json` through
   `transcription.whisperCpp.promptContext` and
   `transcription.whisperCpp.pinnedTerms`, with backward-compatible defaults so
@@ -251,6 +290,7 @@ Recent implementation and planning updates:
   - `apps/desktop/src-tauri/icons/icon.png`
   - `apps/desktop/src-tauri/src/hotkeys.rs`
   - `apps/desktop/src-tauri/src/lib.rs`
+  - `apps/desktop/src-tauri/Cargo.toml` (objc2 deps removed this session)
   - `apps/desktop/src-tauri/examples/live_dictation_probe.rs`
   - `crates/verboscribe-audio/src/lib.rs`
   - `crates/verboscribe-storage/src/lib.rs`
@@ -374,12 +414,13 @@ Docs/process:
 ## Latest Verification
 
 - `cargo fmt --all -- --check` passed.
-- `./scripts/verify.sh` passed.
-- `./scripts/smoke-app-service.sh` passed.
-- `./scripts/smoke-local-fixtures.sh` passed.
-- `npm --workspace apps/desktop run build` passed.
-- A follow-up rebuild through `./script/build_and_run.sh --verify` passed after
-  the unsaved-toggle UX tweak.
+- `./scripts/verify.sh` passed (including the npm desktop build).
+- `cargo check -p verboscribe2-desktop` passed after removing the orphan
+  `macos_status_item.rs` module.
+- `./script/build_and_run.sh --verify` was exercised multiple times during
+  the notch diagnosis and final Tauri-tray revert; the resulting bundle
+  launches cleanly, Accessibility confirms a `AXMenuBarItem` /
+  `AXMenuExtra` slot, and the menu opens with the expected actions on click.
 - Earlier Sprint 9 QA also passed `./script/build_and_run.sh --verify` and
   produced a macOS app bundle with `Contents/Resources/icon.icns`.
 
@@ -435,6 +476,13 @@ The current vertical slice works like this:
    dictation hotkey immediately.
 16. Manual start, stop, and cancel buttons drive the same app-service runtime
    loop as the hotkey path.
+17. On macOS, the desktop app uses Tauri's built-in tray-icon API (the same
+    one used on Windows and Linux) with `ActivationPolicy::Regular` so the
+    Dock icon stays visible. The tray icon renders the full-color VS2 mark
+    (`icon_as_template(false)`) and exposes `Show VerboScribe 2` and
+    `Quit VerboScribe 2` menu entries. macOS Tahoe notch placement can hide
+    the icon on the leftmost per-app extras slot; see the implementation
+    notes above for the user-side workaround.
 
 Current endpoint of the slice:
 
@@ -445,6 +493,13 @@ Current endpoint of the slice:
 - On this macOS machine, the packaged app can complete the real default
   hotkey-to-paste path into a text editor when the shortcut is held while
   speaking.
+- On this macOS machine (MacBook Air M3, 1470-wide logical screen, notch at
+  `x = 646..825`), a freshly rebuilt bundled app shows up in the Dock and
+  exposes a working menu-bar extra. The extra is positioned in the leftmost
+  per-app slot, which on this hardware can fall behind the notch depending
+  on which other menu-bar apps are running. The user-side mitigation is
+  Cmd-drag the icon out from behind the notch, or quit a competing menu-bar
+  app so the leftmost slot lands past the notch on next launch.
 - The direct `live_dictation_probe` path can also record, transcribe, reactivate
   TextEdit, paste recognized text, and preserve the clipboard.
 - Manual QA is still required before treating macOS or Windows insertion as
@@ -724,7 +779,11 @@ Manual recording QA is now needed for:
 - desktop settings save semantics, persistence, and hotkey re-registration
 - manual start, stop, and cancel controls in the packaged app
 - text insertion and clipboard fallback
-- tray/menu-bar behavior
+- final user-facing judgment on the current full-color tray icon (the
+  `verboscribe2-mark-concept-v1-32.png` rounded-square mark) versus a
+  tighter, transparent-background variant designed specifically for the
+  menu bar; the rounded square has built-in padding that makes the visible
+  ribbon mark small inside its slot
 - launch-at-login
 
 Planned QA and hardening stories:
