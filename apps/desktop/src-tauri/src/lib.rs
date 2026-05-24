@@ -2,11 +2,13 @@ mod app_service;
 mod commands;
 mod hotkeys;
 
+#[cfg(target_os = "macos")]
+use tauri::ActivationPolicy;
 use tauri::{
     image::Image,
     menu::MenuBuilder,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    ActivationPolicy, App, AppHandle, Manager, Runtime,
+    App, AppHandle, Manager, Runtime,
 };
 
 pub use app_service::{AppService, AppStatusDto, DictationStatusDto, RuntimeEventDto, SettingsDto};
@@ -97,6 +99,7 @@ fn sync_window_icon<R: Runtime>(app: &App<R>) {
 }
 
 fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
+    #[cfg(target_os = "macos")]
     let _ = app.show();
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
