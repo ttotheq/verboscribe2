@@ -1,9 +1,9 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-05-24, after diagnosing why the macOS menu-bar icon was
-invisible on macOS Tahoe (notch placement, not rendering), and reverting from
-the custom AppKit `NSStatusItem` path back to Tauri's built-in tray-icon API
-unified across macOS/Windows/Linux.
+Last updated: 2026-05-24, after merging PR #1 — the Sprint 9 + Sprint 10
+integration branch plus the macOS menu-bar icon fix and notch-placement
+diagnosis — into `main` via the first real GitHub PR for this repo, and
+catching `origin/main` up with 13 previously-unpushed sprint commits.
 
 ## Resume First
 
@@ -32,8 +32,8 @@ cargo run -p verboscribe2-desktop --example live_dictation_probe -- 6000
 
 Expected current result:
 
-- `git status --short` prints this dirty worktree at this handoff:
-  `M HANDOFF.md`, `M apps/desktop/src-tauri/src/lib.rs`.
+- `git status --short` prints empty (clean worktree after the PR #1 merge).
+- `git branch --show-current` prints `main`, in sync with `origin/main`.
 - `cargo fmt --all -- --check` passes.
 - `./scripts/verify.sh` passes.
 - `./scripts/smoke-app-service.sh` passes.
@@ -91,27 +91,45 @@ Git workflow status:
 
 Current branch:
 
-- `feature/sprint-9-quality-hardening`
-- branch purpose: carry the Sprint 9 macOS QA truth-telling work and the
-  Sprint 10 desktop settings surface foundation on the same integration branch
-- expected worktree state at this handoff: dirty with the macOS menu-bar icon
-  diagnosis and Tauri-tray revert (`M HANDOFF.md`,
-  `M apps/desktop/src-tauri/src/lib.rs`); the prior `?? macos_status_item.rs`
-  custom AppKit module was removed during this session
-- branch divergence from `origin/main` at handoff time: ahead by 17 commits
-- latest session commits:
-  - `b0b90a0 feat(desktop): replace the status shell with a settings surface`
-  - `807f79e fix(dictation): harden macOS runtime recovery and QA seams`
-  - `43b37e4 feat(desktop-macos): add tray icon and stabilize local app packaging`
-  - `cb748cb chore: ignore Codex workspace state`
+- `main` — clean, in sync with `origin/main`. The Sprint 9 + Sprint 10
+  integration branch (`feature/sprint-9-quality-hardening`) was rebase-merged
+  via PR #1 and deleted both locally and on the remote. Open a new
+  `feature/*` branch for the next slice of work.
+
+GitHub workflow status:
+
+- Repo: https://github.com/ttotheq/verboscribe2
+- Until 2026-05-24 this repo had no PR history — all sprint work landed on
+  local `main` and was never pushed. PR #1 was the first to exercise the
+  CI gate against `origin/main`. Going forward, new sprints should follow
+  push-branch → `gh pr create --base main` → CI gate → `gh pr merge
+  --rebase --delete-branch`. The CI workflow (`.github/workflows/ci.yml`)
+  runs `Verify (ubuntu-latest)` and `Verify (macos-latest)` on PRs and on
+  pushes to `main`; both must be green before merge.
+- macOS-only Tauri APIs (`ActivationPolicy`, `AppHandle::show`) must be
+  cfg-gated; Linux CI caught a regression mid-PR-#1 because they were
+  imported unconditionally, and a local Mac build can't catch this class
+  of bug. Treat the Linux CI run as the authoritative cross-platform check.
 
 Recent merge status:
 
-- `feature/sprint-7-clipboard-insertion` merged into `main`
-- `feature/sprint-6-live-dictation` merged into `main`
-- `feature/sprint-5-hotkeys` merged into `main`
-- `feature/ci-baseline` merged into `main`
-- `feature/sprint-4-live-capture` merged into `main`
+- PR #1 `feature/sprint-9-quality-hardening` rebase-merged into `main` on
+  2026-05-24, carrying:
+  - `bd4f62e chore: ignore Codex workspace state`
+  - `4d97682 feat(desktop-macos): add tray icon and stabilize local app packaging`
+  - `b297155 fix(dictation): harden macOS runtime recovery and QA seams`
+  - `74000df feat(desktop): replace the status shell with a settings surface`
+  - `a48d5f0 docs: refresh sprint status and product planning`
+  - `9fee901 fix(desktop-macos): restore visible menu-bar icon via Tauri tray + diagnose notch placement`
+  - `bc2a06b fix(desktop): gate macOS-only Tauri APIs behind cfg`
+- Earlier sprint branches that had been merged to local `main` long ago
+  but never pushed are now on `origin/main` as part of the same 2026-05-24
+  catch-up push:
+  - `feature/sprint-7-clipboard-insertion`
+  - `feature/sprint-6-live-dictation`
+  - `feature/sprint-5-hotkeys`
+  - `feature/ci-baseline`
+  - `feature/sprint-4-live-capture`
 
 Completed:
 
