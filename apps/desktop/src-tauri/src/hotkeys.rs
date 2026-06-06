@@ -1,9 +1,9 @@
 use tauri::{App, AppHandle, Runtime};
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-use crate::app_service::{AppService, HotkeyEventState};
+use crate::app_service::{AppService, HotkeyEventState, HotkeyRole};
 
 fn debug_hotkeys(message: impl AsRef<str>) {
     if std::env::var_os("VERBOSCRIBE_DEBUG_HOTKEYS").is_some() {
@@ -20,22 +20,22 @@ pub fn install<R: Runtime>(
         let handler_service = service.clone();
         app.handle().plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |_app, _shortcut, event| match event.state() {
-                    ShortcutState::Pressed => {
-                        debug_hotkeys("received pressed event");
-                        if let Err(error) =
-                            handler_service.handle_hotkey_event(HotkeyEventState::Pressed)
-                        {
-                            debug_hotkeys(format!("pressed event failed: {error}"));
-                        }
-                    }
-                    ShortcutState::Released => {
-                        debug_hotkeys("received released event");
-                        if let Err(error) =
-                            handler_service.handle_hotkey_event(HotkeyEventState::Released)
-                        {
-                            debug_hotkeys(format!("released event failed: {error}"));
-                        }
+                .with_handler(move |_app, shortcut, event| {
+                    let Some(role) = resolve_hotkey_role(&handler_service, shortcut) else {
+                        debug_hotkeys("ignoring event for unrecognized shortcut");
+                        return;
+                    };
+                    let state = match event.state() {
+                        ShortcutState::Pressed => HotkeyEventState::Pressed,
+                        ShortcutState::Released => HotkeyEventState::Released,
+                    };
+                    debug_hotkeys(format!("received {state:?} event for {role:?}"));
+                    let result = match role {
+                        HotkeyRole::Dictation => handler_service.handle_hotkey_event(state),
+                        HotkeyRole::Toggle => handler_service.handle_toggle_hotkey_event(state),
+                    };
+                    if let Err(error) = result {
+                        debug_hotkeys(format!("event failed: {error}"));
                     }
                 })
                 .build(),
@@ -62,39 +62,73 @@ pub fn register_from_settings<R: Runtime>(
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
         let settings = service.settings()?;
-        let configured_shortcut = settings.hotkey;
-        let accelerator = normalize_hotkey_accelerator(&configured_shortcut)?;
-        debug_hotkeys(format!(
-            "register requested: configured='{configured_shortcut}' accelerator='{accelerator}'"
-        ));
+        // Register both hotkeys even if one fails, so a conflict on one does not
+        // suppress the other. Per-role failures are recorded on the service and
+        // surfaced through app status; the first error is returned for the caller.
+        let dictation = register_role(app, service, HotkeyRole::Dictation, settings.hotkey);
+        let toggle = register_role(app, service, HotkeyRole::Toggle, settings.toggle_hotkey);
+        dictation.and(toggle)
+    }
+}
 
-        if let Some(active_accelerator) = service.active_hotkey_accelerator() {
-            if active_accelerator == accelerator {
-                service.set_hotkey_registered(configured_shortcut, accelerator);
-                debug_hotkeys("register skipped: accelerator already active");
-                return Ok(());
-            }
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn register_role<R: Runtime>(
+    app: &AppHandle<R>,
+    service: &AppService,
+    role: HotkeyRole,
+    configured_shortcut: String,
+) -> Result<(), String> {
+    let accelerator = normalize_hotkey_accelerator(&configured_shortcut)?;
+    debug_hotkeys(format!(
+        "register requested: {role:?} configured='{configured_shortcut}' accelerator='{accelerator}'"
+    ));
 
-            app.global_shortcut()
-                .unregister(active_accelerator.as_str())
-                .map_err(|error| error.to_string())?;
-            debug_hotkeys(format!(
-                "unregistered previous accelerator '{active_accelerator}'"
-            ));
+    if let Some(active_accelerator) = service.active_hotkey_accelerator(role) {
+        if active_accelerator == accelerator {
+            service.set_hotkey_registered(role, configured_shortcut, accelerator);
+            debug_hotkeys("register skipped: accelerator already active");
+            return Ok(());
         }
 
         app.global_shortcut()
-            .register(accelerator.as_str())
-            .map_err(|error| {
-                let error = error.to_string();
-                service.set_hotkey_registration_failed(configured_shortcut.clone(), error.clone());
-                error
-            })?;
-
-        service.set_hotkey_registered(configured_shortcut, accelerator);
-        debug_hotkeys("register succeeded");
-        Ok(())
+            .unregister(active_accelerator.as_str())
+            .map_err(|error| error.to_string())?;
+        debug_hotkeys(format!(
+            "unregistered previous accelerator '{active_accelerator}'"
+        ));
     }
+
+    app.global_shortcut()
+        .register(accelerator.as_str())
+        .map_err(|error| {
+            let error = error.to_string();
+            service.set_hotkey_registration_failed(
+                role,
+                configured_shortcut.clone(),
+                error.clone(),
+            );
+            error
+        })?;
+
+    service.set_hotkey_registered(role, configured_shortcut, accelerator);
+    debug_hotkeys("register succeeded");
+    Ok(())
+}
+
+/// Match a fired global shortcut back to the role it was registered under by
+/// comparing it against each role's currently active accelerator.
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn resolve_hotkey_role(service: &AppService, shortcut: &Shortcut) -> Option<HotkeyRole> {
+    for role in [HotkeyRole::Dictation, HotkeyRole::Toggle] {
+        if let Some(accelerator) = service.active_hotkey_accelerator(role) {
+            if let Ok(parsed) = accelerator.parse::<Shortcut>() {
+                if &parsed == shortcut {
+                    return Some(role);
+                }
+            }
+        }
+    }
+    None
 }
 
 pub fn unregister_current<R: Runtime>(
@@ -109,21 +143,40 @@ pub fn unregister_current<R: Runtime>(
 
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     {
-        let configured_shortcut = service
-            .settings()
-            .map(|settings| settings.hotkey)
-            .unwrap_or_else(|_| "Unknown hotkey".to_string());
+        let settings = service.settings().ok();
+        let dictation_shortcut = settings
+            .as_ref()
+            .map(|settings| settings.hotkey.clone())
+            .unwrap_or_else(|| "Unknown hotkey".to_string());
+        let toggle_shortcut = settings
+            .as_ref()
+            .map(|settings| settings.toggle_hotkey.clone())
+            .unwrap_or_else(|| "Unknown hotkey".to_string());
 
-        if let Some(active_accelerator) = service.active_hotkey_accelerator() {
-            app.global_shortcut()
-                .unregister(active_accelerator.as_str())
-                .map_err(|error| error.to_string())?;
-            debug_hotkeys(format!("unregister succeeded: '{active_accelerator}'"));
-        }
-
-        service.clear_hotkey_registration(configured_shortcut);
-        Ok(())
+        let dictation = unregister_role(app, service, HotkeyRole::Dictation, dictation_shortcut);
+        let toggle = unregister_role(app, service, HotkeyRole::Toggle, toggle_shortcut);
+        dictation.and(toggle)
     }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn unregister_role<R: Runtime>(
+    app: &AppHandle<R>,
+    service: &AppService,
+    role: HotkeyRole,
+    configured_shortcut: String,
+) -> Result<(), String> {
+    if let Some(active_accelerator) = service.active_hotkey_accelerator(role) {
+        app.global_shortcut()
+            .unregister(active_accelerator.as_str())
+            .map_err(|error| error.to_string())?;
+        debug_hotkeys(format!(
+            "unregister succeeded: {role:?} '{active_accelerator}'"
+        ));
+    }
+
+    service.clear_hotkey_registration(role, configured_shortcut);
+    Ok(())
 }
 
 fn normalize_hotkey_accelerator(configured_shortcut: &str) -> Result<String, String> {
