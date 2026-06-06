@@ -13,6 +13,7 @@ type StatusModel = {
   provider: string;
   dictationMode: DictationMode;
   hotkey: string;
+  toggleHotkey: string;
   usageHint: string;
   recovery: string;
   lastTranscript: string;
@@ -28,6 +29,7 @@ type SettingsPayload = {
   dictationMode: DictationMode;
   minRecordingMs: number;
   hotkey: string;
+  toggleHotkey: string;
 };
 
 type SettingsModel = {
@@ -40,6 +42,7 @@ type SettingsModel = {
   dictationMode: DictationMode;
   minRecordingMs: number;
   hotkey: string;
+  toggleHotkey: string;
 };
 
 type RecoveryModel = {
@@ -81,6 +84,7 @@ type ShellElements = {
   binaryPathInput: HTMLInputElement;
   modelPathInput: HTMLInputElement;
   hotkeyInput: HTMLInputElement;
+  toggleHotkeyInput: HTMLInputElement;
   modeSelect: HTMLSelectElement;
   promptContextInput: HTMLTextAreaElement;
   pinnedTermsInput: HTMLTextAreaElement;
@@ -93,6 +97,7 @@ type ShellElements = {
   providerMetric: HTMLParagraphElement;
   modeMetric: HTMLParagraphElement;
   hotkeyMetric: HTMLParagraphElement;
+  toggleHotkeyMetric: HTMLParagraphElement;
   healthMetric: HTMLParagraphElement;
   usageHint: HTMLParagraphElement;
   runtimePhase: HTMLParagraphElement;
@@ -111,6 +116,7 @@ const fallbackStatus: StatusModel = {
   provider: "whisper.cpp",
   dictationMode: "pressAndHold",
   hotkey: "Control+Option+Space",
+  toggleHotkey: "Control+Option+D",
   usageHint: "Hold Control+Option+Space while speaking, then release to transcribe.",
   recovery: "No recovery needed",
   lastTranscript: "",
@@ -126,6 +132,7 @@ const fallbackSettings: SettingsModel = {
   dictationMode: "pressAndHold",
   minRecordingMs: 1_000,
   hotkey: "Control+Option+Space",
+  toggleHotkey: "Control+Option+D",
 };
 
 const fallbackRuntime: RuntimeModel = {
@@ -166,6 +173,7 @@ function normalizeSettings(payload?: SettingsPayload | null): SettingsModel {
     dictationMode: payload?.dictationMode ?? fallbackSettings.dictationMode,
     minRecordingMs: payload?.minRecordingMs ?? fallbackSettings.minRecordingMs,
     hotkey: payload?.hotkey ?? fallbackSettings.hotkey,
+    toggleHotkey: payload?.toggleHotkey ?? fallbackSettings.toggleHotkey,
   };
 }
 
@@ -180,6 +188,7 @@ function serializeSettings(settings: SettingsModel): SettingsPayload {
     dictationMode: settings.dictationMode,
     minRecordingMs: settings.minRecordingMs,
     hotkey: settings.hotkey.trim(),
+    toggleHotkey: settings.toggleHotkey.trim(),
   };
 }
 
@@ -272,7 +281,13 @@ function mountShell() {
               <label class="field">
                 <span>Dictation hotkey</span>
                 <input name="hotkey" type="text" autocomplete="off" spellcheck="false" />
-                <small>Saving reapplies the global hotkey through the backend shortcut layer.</small>
+                <small>Follows the dictation mode above (press and hold by default).</small>
+              </label>
+
+              <label class="field">
+                <span>Toggle hotkey</span>
+                <input name="toggleHotkey" type="text" autocomplete="off" spellcheck="false" />
+                <small>Always toggles: tap once to start dictation, tap again to stop.</small>
               </label>
             </div>
 
@@ -336,6 +351,10 @@ function mountShell() {
               <article class="metric metric-wide">
                 <span>Hotkey</span>
                 <p id="metric-hotkey"></p>
+              </article>
+              <article class="metric metric-wide">
+                <span>Toggle hotkey</span>
+                <p id="metric-toggle-hotkey"></p>
               </article>
               <article class="metric metric-wide">
                 <span>Health</span>
@@ -406,6 +425,7 @@ function mountShell() {
     binaryPathInput: queryElement('input[name="whisperCppBinaryPath"]'),
     modelPathInput: queryElement('input[name="whisperCppModelPath"]'),
     hotkeyInput: queryElement('input[name="hotkey"]'),
+    toggleHotkeyInput: queryElement('input[name="toggleHotkey"]'),
     modeSelect: queryElement('select[name="dictationMode"]'),
     promptContextInput: queryElement('textarea[name="whisperCppPromptContext"]'),
     pinnedTermsInput: queryElement('textarea[name="whisperCppPinnedTerms"]'),
@@ -418,6 +438,7 @@ function mountShell() {
     providerMetric: queryElement("#metric-provider"),
     modeMetric: queryElement("#metric-mode"),
     hotkeyMetric: queryElement("#metric-hotkey"),
+    toggleHotkeyMetric: queryElement("#metric-toggle-hotkey"),
     healthMetric: queryElement("#metric-health"),
     usageHint: queryElement("#usage-hint"),
     runtimePhase: queryElement("#runtime-phase"),
@@ -469,6 +490,7 @@ function wireEvents() {
   elements.binaryPathInput.addEventListener("input", inputHandler);
   elements.modelPathInput.addEventListener("input", inputHandler);
   elements.hotkeyInput.addEventListener("input", inputHandler);
+  elements.toggleHotkeyInput.addEventListener("input", inputHandler);
   elements.modeSelect.addEventListener("change", inputHandler);
   elements.promptContextInput.addEventListener("input", inputHandler);
   elements.pinnedTermsInput.addEventListener("input", inputHandler);
@@ -521,6 +543,11 @@ function syncShell(forceFormSync = false) {
     forceFormSync,
   );
   syncControlValue(elements.hotkeyInput, uiState.draftSettings.hotkey, forceFormSync);
+  syncControlValue(
+    elements.toggleHotkeyInput,
+    uiState.draftSettings.toggleHotkey,
+    forceFormSync,
+  );
   syncControlValue(elements.modeSelect, uiState.draftSettings.dictationMode, forceFormSync);
   syncControlValue(
     elements.promptContextInput,
@@ -540,6 +567,7 @@ function syncShell(forceFormSync = false) {
   elements.providerMetric.textContent = status.provider;
   elements.modeMetric.textContent = formatMode(status.dictationMode);
   elements.hotkeyMetric.textContent = status.hotkey;
+  elements.toggleHotkeyMetric.textContent = status.toggleHotkey;
   elements.healthMetric.textContent =
     status.recovery === "No recovery needed" ? "No recovery needed" : status.recovery;
   elements.usageHint.textContent = status.usageHint;
@@ -648,7 +676,8 @@ function isSettingsField(value: string): value is keyof SettingsModel {
     value === "whisperCppPromptContext" ||
     value === "whisperCppPinnedTerms" ||
     value === "dictationMode" ||
-    value === "hotkey"
+    value === "hotkey" ||
+    value === "toggleHotkey"
   );
 }
 
@@ -796,6 +825,9 @@ function validateSettings(settings: SettingsModel): string | null {
   }
   if (!settings.hotkey.trim()) {
     return "A dictation hotkey is required before settings can be saved.";
+  }
+  if (!settings.toggleHotkey.trim()) {
+    return "A toggle hotkey is required before settings can be saved.";
   }
   return null;
 }

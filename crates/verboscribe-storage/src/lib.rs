@@ -12,6 +12,7 @@ pub const SETTINGS_SCHEMA_VERSION: u32 = 1;
 pub const DEFAULT_PROVIDER: TranscriptionProviderKind = TranscriptionProviderKind::WhisperCpp;
 pub const DEFAULT_LANGUAGE: &str = "en";
 pub const DEFAULT_DICTATION_HOTKEY: &str = "Control+Option+Space";
+pub const DEFAULT_DICTATION_TOGGLE_HOTKEY: &str = "Control+Option+D";
 pub const DEFAULT_MIN_RECORDING_MS: u64 = 1_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -142,12 +143,22 @@ impl From<DictationMode> for SettingsDictationMode {
 #[serde(rename_all = "camelCase")]
 pub struct HotkeySettings {
     pub dictation: String,
+    /// Separate hotkey that always toggles dictation (tap to start, tap to
+    /// stop), independent of `DictationSettings::mode`. `#[serde(default)]`
+    /// keeps settings files written before this field deserializable.
+    #[serde(default = "default_dictation_toggle_hotkey")]
+    pub dictation_toggle: String,
+}
+
+fn default_dictation_toggle_hotkey() -> String {
+    DEFAULT_DICTATION_TOGGLE_HOTKEY.to_string()
 }
 
 impl Default for HotkeySettings {
     fn default() -> Self {
         Self {
             dictation: DEFAULT_DICTATION_HOTKEY.to_string(),
+            dictation_toggle: DEFAULT_DICTATION_TOGGLE_HOTKEY.to_string(),
         }
     }
 }
@@ -278,6 +289,7 @@ mod tests {
         assert_eq!(settings.dictation.mode, SettingsDictationMode::PressAndHold);
         assert_eq!(settings.dictation.min_recording_ms, 1_000);
         assert_eq!(settings.hotkeys.dictation, "Control+Option+Space");
+        assert_eq!(settings.hotkeys.dictation_toggle, "Control+Option+D");
     }
 
     #[test]
@@ -364,6 +376,8 @@ mod tests {
 
         assert_eq!(settings.transcription.whisper_cpp.prompt_context, "");
         assert_eq!(settings.transcription.whisper_cpp.pinned_terms, "");
+        // Settings written before the toggle hotkey existed fall back to the default.
+        assert_eq!(settings.hotkeys.dictation_toggle, "Control+Option+D");
     }
 
     #[test]

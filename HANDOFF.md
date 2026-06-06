@@ -1,6 +1,9 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-05-24, after merging PR #1 — the Sprint 9 + Sprint 10
+Last updated: 2026-06-06, after adding a second, dedicated toggle dictation
+hotkey (`Control+Option+D` by default) alongside the existing press-and-hold
+`Control+Option+Space` hotkey, on branch `feature/toggle-dictation-hotkey`.
+Prior update: 2026-05-24, after merging PR #1 — the Sprint 9 + Sprint 10
 integration branch plus the macOS menu-bar icon fix and notch-placement
 diagnosis — into `main` via the first real GitHub PR for this repo, and
 catching `origin/main` up with 13 previously-unpushed sprint commits.
@@ -431,6 +434,25 @@ Docs/process:
 
 ## Latest Verification
 
+2026-06-06 (toggle-hotkey branch):
+
+- `cargo fmt --all -- --check` passed.
+- `./scripts/verify.sh` passed: 65 Rust tests across the workspace (core 21,
+  storage 7, audio 16, platform 8, transcription 7, desktop 26) plus the npm
+  desktop build. New tests: `verboscribe-core` forced-mode toggle on a
+  press-and-hold engine; `verboscribe-storage` toggle-hotkey default + legacy
+  migration; `verboscribe2-desktop` toggle-hotkey tap cycle and independent
+  registration/recovery reporting.
+- `apps/desktop` `tsc --noEmit` passed.
+- `./script/build_and_run.sh run` rebuilt and launched the bundled app; the
+  user confirmed it runs with the changes. The earlier "did not work" report
+  was a stale pre-change bundle — source edits + tests do NOT update the
+  installed `.app`; a `tauri build` / `build_and_run.sh` is required.
+- Pre-existing clippy note in `hotkeys.rs install` (`&app.handle()`) is
+  unrelated to this change and left as-is.
+
+Prior verification (2026-05-24):
+
 - `cargo fmt --all -- --check` passed.
 - `./scripts/verify.sh` passed (including the npm desktop build).
 - `cargo check -p verboscribe2-desktop` passed after removing the orphan
@@ -468,8 +490,16 @@ For the next development slice, read these first:
 The current vertical slice works like this:
 
 1. The desktop shell starts and loads persisted settings.
-2. The Tauri global shortcut plugin registers the configured dictation hotkey.
-3. Hotkey `Pressed` is forwarded into `AppService`.
+2. The Tauri global shortcut plugin registers two hotkeys: the press-and-hold
+   dictation hotkey (`Control+Option+Space`, behavior follows the configured
+   `DictationSettings::mode`) and a dedicated toggle hotkey
+   (`Control+Option+D`, always toggles regardless of mode). `hotkeys.rs`
+   resolves which one fired by matching the event against each role's active
+   accelerator (`HotkeyRole::{Dictation, Toggle}`) and routes accordingly.
+3. Hotkey `Pressed` is forwarded into `AppService` —
+   `handle_hotkey_event` for the press-and-hold key, or
+   `handle_toggle_hotkey_event` (forces `DictationMode::Toggle` via the engine's
+   `hotkey_with_mode`) for the toggle key.
 4. `AppService` lazily builds a real desktop `DictationEngine` from saved
    settings.
 5. The platform target tracker captures the active app and remembers the last
@@ -488,7 +518,10 @@ The current vertical slice works like this:
 12. Status commands report idle, recording, transcribing, success, or recovery
    failure state.
 13. The desktop UI renders editable provider paths, language, dictation mode,
-   hotkey, prompt context, and pinned terms beside the live status surface.
+   the press-and-hold hotkey, the toggle hotkey, prompt context, and pinned
+   terms beside the live status surface. The status panel shows independent
+   registration state for both hotkeys; a failure on either surfaces as a
+   "Hotkey unavailable" health warning.
 14. Form edits remain drafts until `Save settings to apply` succeeds.
 15. Saving settings persists through the existing store and re-applies the
    dictation hotkey immediately.
@@ -794,6 +827,10 @@ Manual recording QA is now needed for:
 
 - live microphone capture
 - global hotkey registration
+- the toggle hotkey (`Control+Option+D`): tap once to start, tap again to
+  stop, and confirm it works independently of the press-and-hold
+  `Control+Option+Space` key and the configured dictation mode (covered by
+  unit tests; not yet exercised end-to-end with a real keypress)
 - desktop settings save semantics, persistence, and hotkey re-registration
 - manual start, stop, and cancel controls in the packaged app
 - text insertion and clipboard fallback

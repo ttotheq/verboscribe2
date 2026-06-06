@@ -157,7 +157,18 @@ where
     }
 
     pub fn hotkey(&mut self, event: HotkeyEvent) -> Result<(), DictationError> {
-        match (self.config.mode, event) {
+        self.hotkey_with_mode(self.config.mode, event)
+    }
+
+    /// Drive the state machine for a single hotkey event under an explicit mode,
+    /// ignoring the engine's configured default. Lets distinct hotkeys carry
+    /// distinct behaviors (e.g. a press-and-hold key and a separate toggle key).
+    pub fn hotkey_with_mode(
+        &mut self,
+        mode: DictationMode,
+        event: HotkeyEvent,
+    ) -> Result<(), DictationError> {
+        match (mode, event) {
             (DictationMode::PressAndHold, HotkeyEvent::Pressed)
                 if self.state == DictationState::Idle =>
             {
@@ -414,6 +425,31 @@ mod tests {
         assert_eq!(engine.state(), DictationState::Recording);
 
         engine.hotkey(HotkeyEvent::Pressed).unwrap();
+        assert_eq!(engine.state(), DictationState::Idle);
+        assert_eq!(engine.last_transcript(), Some("hello world"));
+    }
+
+    #[test]
+    fn hotkey_with_mode_toggles_on_a_press_and_hold_engine() {
+        // A press-and-hold-configured engine must still honor a forced Toggle
+        // event, so a dedicated toggle hotkey works without changing settings.
+        let mut engine = engine(DictationConfig::default());
+        assert_eq!(engine.config.mode, DictationMode::PressAndHold);
+
+        engine
+            .hotkey_with_mode(DictationMode::Toggle, HotkeyEvent::Pressed)
+            .unwrap();
+        assert_eq!(engine.state(), DictationState::Recording);
+
+        // Release is a no-op under Toggle: a tap should not stop recording.
+        engine
+            .hotkey_with_mode(DictationMode::Toggle, HotkeyEvent::Released)
+            .unwrap();
+        assert_eq!(engine.state(), DictationState::Recording);
+
+        engine
+            .hotkey_with_mode(DictationMode::Toggle, HotkeyEvent::Pressed)
+            .unwrap();
         assert_eq!(engine.state(), DictationState::Idle);
         assert_eq!(engine.last_transcript(), Some("hello world"));
     }

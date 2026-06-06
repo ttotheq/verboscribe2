@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use verboscribe_audio::CpalAudioRecorder;
 use verboscribe_core::{
     AudioCapture, AudioRecorder, DefaultTranscriptProcessor, DictationConfig, DictationEngine,
-    DictationError, DictationState, HotkeyEvent, PersonalDictionary, ProcessedTranscript,
-    TargetApp, TargetAppTracker, TextInsertionService, TranscriptProcessingOptions,
-    TranscriptProcessor, TranscriptionProvider,
+    DictationError, DictationMode, DictationState, HotkeyEvent, PersonalDictionary,
+    ProcessedTranscript, TargetApp, TargetAppTracker, TextInsertionService,
+    TranscriptProcessingOptions, TranscriptProcessor, TranscriptionProvider,
 };
 use verboscribe_platform::{DesktopTargetTracker, DesktopTextInserter};
 use verboscribe_storage::{
@@ -29,6 +29,7 @@ pub struct AppStatusDto {
     pub provider: String,
     pub dictation_mode: String,
     pub hotkey: String,
+    pub toggle_hotkey: String,
     pub usage_hint: String,
     pub recovery: String,
     pub last_transcript: String,
@@ -53,6 +54,7 @@ pub struct SettingsDto {
     pub dictation_mode: String,
     pub min_recording_ms: u64,
     pub hotkey: String,
+    pub toggle_hotkey: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -92,6 +94,7 @@ impl From<AppSettings> for SettingsDto {
             dictation_mode: dictation_mode_name(settings.dictation.mode).to_string(),
             min_recording_ms: settings.dictation.min_recording_ms,
             hotkey: settings.hotkeys.dictation,
+            toggle_hotkey: settings.hotkeys.dictation_toggle,
         }
     }
 }
@@ -100,6 +103,7 @@ impl From<AppSettings> for SettingsDto {
 pub struct AppService {
     settings_store: JsonSettingsStore,
     hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
+    toggle_hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
     dictation_runtime: Arc<Mutex<DictationRuntimeState>>,
 }
 
@@ -110,6 +114,15 @@ struct HotkeyRuntimeState {
     last_event: Option<HotkeyEventState>,
     registration_error: Option<String>,
     registered: bool,
+}
+
+/// Identifies which of the two dictation hotkeys an action applies to. The
+/// dictation hotkey follows the configured `DictationSettings::mode` (default
+/// press-and-hold); the toggle hotkey always toggles regardless of that mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HotkeyRole {
+    Dictation,
+    Toggle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,6 +155,11 @@ trait RuntimeDictationEngine {
     fn stop_transcribe_insert(&mut self) -> Result<(), DictationError>;
     fn cancel(&mut self);
     fn hotkey(&mut self, event: HotkeyEvent) -> Result<(), DictationError>;
+    fn hotkey_with_mode(
+        &mut self,
+        mode: DictationMode,
+        event: HotkeyEvent,
+    ) -> Result<(), DictationError>;
     fn last_transcript(&self) -> Option<&str>;
 }
 
@@ -172,6 +190,14 @@ where
 
     fn hotkey(&mut self, event: HotkeyEvent) -> Result<(), DictationError> {
         DictationEngine::hotkey(self, event)
+    }
+
+    fn hotkey_with_mode(
+        &mut self,
+        mode: DictationMode,
+        event: HotkeyEvent,
+    ) -> Result<(), DictationError> {
+        DictationEngine::hotkey_with_mode(self, mode, event)
     }
 
     fn last_transcript(&self) -> Option<&str> {
@@ -208,6 +234,7 @@ impl Default for AppService {
         Self {
             settings_store: JsonSettingsStore::default_for_app("VerboScribe 2"),
             hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
+            toggle_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             dictation_runtime: Arc::new(Mutex::new(DictationRuntimeState::default())),
         }
     }
@@ -219,6 +246,7 @@ impl AppService {
         Self {
             settings_store,
             hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
+            toggle_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             dictation_runtime: Arc::new(Mutex::new(DictationRuntimeState::default())),
         }
     }
@@ -232,11 +260,14 @@ impl AppService {
                 format!("Settings unavailable: {error}"),
             ),
         };
-        let hotkey_status = self.hotkey_status(&settings.hotkeys.dictation);
+        let hotkey_status = self.hotkey_status(HotkeyRole::Dictation, &settings.hotkeys.dictation);
+        let toggle_hotkey_status =
+            self.hotkey_status(HotkeyRole::Toggle, &settings.hotkeys.dictation_toggle);
         let dictation_status = self.dictation_status_snapshot();
         let recovery = hotkey_status
             .registration_error
             .as_ref()
+            .or(toggle_hotkey_status.registration_error.as_ref())
             .map(|error| format!("Hotkey unavailable: {error}"))
             .or_else(|| {
                 dictation_status
@@ -252,6 +283,7 @@ impl AppService {
             provider: settings.transcription.provider.label().to_string(),
             dictation_mode: dictation_mode_name(settings.dictation.mode).to_string(),
             hotkey: format_hotkey_status(&hotkey_status),
+            toggle_hotkey: format_hotkey_status(&toggle_hotkey_status),
             usage_hint: usage_hint(
                 settings.dictation.mode,
                 dictation_status.state,
@@ -392,13 +424,21 @@ impl AppService {
         &self,
         event: HotkeyEventState,
     ) -> Result<DictationStatusDto, String> {
-        self.record_hotkey_event(event);
-        let event = match event {
-            HotkeyEventState::Pressed => HotkeyEvent::Pressed,
-            HotkeyEventState::Released => HotkeyEvent::Released,
-        };
-
+        self.record_hotkey_event(HotkeyRole::Dictation, event);
+        let event = hotkey_event(event);
         self.drive_dictation(|engine| engine.hotkey(event))
+    }
+
+    /// Drive the dedicated toggle hotkey. Always uses `DictationMode::Toggle`
+    /// regardless of the configured dictation mode, so a tap starts dictation
+    /// and a second tap stops it.
+    pub fn handle_toggle_hotkey_event(
+        &self,
+        event: HotkeyEventState,
+    ) -> Result<DictationStatusDto, String> {
+        self.record_hotkey_event(HotkeyRole::Toggle, event);
+        let event = hotkey_event(event);
+        self.drive_dictation(|engine| engine.hotkey_with_mode(DictationMode::Toggle, event))
     }
 
     fn dictation_status_snapshot(&self) -> DictationStatusSnapshot {
@@ -549,8 +589,13 @@ impl AppService {
         });
     }
 
-    pub fn set_hotkey_registered(&self, configured_shortcut: String, active_accelerator: String) {
-        self.mutate_hotkey_state(|state| {
+    pub fn set_hotkey_registered(
+        &self,
+        role: HotkeyRole,
+        configured_shortcut: String,
+        active_accelerator: String,
+    ) {
+        self.mutate_hotkey_state(role, |state| {
             state.configured_shortcut = Some(configured_shortcut);
             state.active_accelerator = Some(active_accelerator);
             state.registration_error = None;
@@ -558,8 +603,13 @@ impl AppService {
         });
     }
 
-    pub fn set_hotkey_registration_failed(&self, configured_shortcut: String, error: String) {
-        self.mutate_hotkey_state(|state| {
+    pub fn set_hotkey_registration_failed(
+        &self,
+        role: HotkeyRole,
+        configured_shortcut: String,
+        error: String,
+    ) {
+        self.mutate_hotkey_state(role, |state| {
             state.configured_shortcut = Some(configured_shortcut);
             state.active_accelerator = None;
             state.last_event = None;
@@ -568,8 +618,8 @@ impl AppService {
         });
     }
 
-    pub fn clear_hotkey_registration(&self, configured_shortcut: String) {
-        self.mutate_hotkey_state(|state| {
+    pub fn clear_hotkey_registration(&self, role: HotkeyRole, configured_shortcut: String) {
+        self.mutate_hotkey_state(role, |state| {
             state.configured_shortcut = Some(configured_shortcut);
             state.active_accelerator = None;
             state.last_event = None;
@@ -578,18 +628,18 @@ impl AppService {
         });
     }
 
-    pub fn active_hotkey_accelerator(&self) -> Option<String> {
-        self.with_hotkey_state(|state| state.active_accelerator.clone())
+    pub fn active_hotkey_accelerator(&self, role: HotkeyRole) -> Option<String> {
+        self.with_hotkey_state(role, |state| state.active_accelerator.clone())
     }
 
-    pub fn record_hotkey_event(&self, event: HotkeyEventState) {
-        self.mutate_hotkey_state(|state| {
+    pub fn record_hotkey_event(&self, role: HotkeyRole, event: HotkeyEventState) {
+        self.mutate_hotkey_state(role, |state| {
             state.last_event = Some(event);
         });
     }
 
-    fn hotkey_status(&self, configured_shortcut: &str) -> HotkeyStatusSnapshot {
-        self.with_hotkey_state(|state| HotkeyStatusSnapshot {
+    fn hotkey_status(&self, role: HotkeyRole, configured_shortcut: &str) -> HotkeyStatusSnapshot {
+        self.with_hotkey_state(role, |state| HotkeyStatusSnapshot {
             configured_shortcut: state
                 .configured_shortcut
                 .clone()
@@ -601,15 +651,26 @@ impl AppService {
         })
     }
 
-    fn mutate_hotkey_state(&self, mutate: impl FnOnce(&mut HotkeyRuntimeState)) {
-        if let Ok(mut state) = self.hotkey_state.lock() {
+    fn hotkey_state_for(&self, role: HotkeyRole) -> &Arc<Mutex<HotkeyRuntimeState>> {
+        match role {
+            HotkeyRole::Dictation => &self.hotkey_state,
+            HotkeyRole::Toggle => &self.toggle_hotkey_state,
+        }
+    }
+
+    fn mutate_hotkey_state(&self, role: HotkeyRole, mutate: impl FnOnce(&mut HotkeyRuntimeState)) {
+        if let Ok(mut state) = self.hotkey_state_for(role).lock() {
             mutate(&mut state);
         }
     }
 
-    fn with_hotkey_state<T>(&self, read: impl FnOnce(&HotkeyRuntimeState) -> T) -> T {
+    fn with_hotkey_state<T>(
+        &self,
+        role: HotkeyRole,
+        read: impl FnOnce(&HotkeyRuntimeState) -> T,
+    ) -> T {
         let state = self
-            .hotkey_state
+            .hotkey_state_for(role)
             .lock()
             .expect("hotkey state lock poisoned");
         read(&state)
@@ -669,6 +730,7 @@ impl TryFrom<SettingsDto> for AppSettings {
         settings.dictation.mode = dictation_mode;
         settings.dictation.min_recording_ms = dto.min_recording_ms;
         settings.hotkeys.dictation = dto.hotkey;
+        settings.hotkeys.dictation_toggle = dto.toggle_hotkey;
         Ok(settings)
     }
 }
@@ -755,6 +817,13 @@ fn usage_hint(
         (SettingsDictationMode::Toggle, DictationState::Transcribing) => {
             "Wait while VerboScribe transcribes and pastes the latest recording.".to_string()
         }
+    }
+}
+
+fn hotkey_event(event: HotkeyEventState) -> HotkeyEvent {
+    match event {
+        HotkeyEventState::Pressed => HotkeyEvent::Pressed,
+        HotkeyEventState::Released => HotkeyEvent::Released,
     }
 }
 
@@ -1135,6 +1204,70 @@ mod tests {
     }
 
     #[test]
+    fn toggle_hotkey_taps_start_and_stop_on_a_press_and_hold_engine() {
+        let (_temp_dir, service) = temp_service();
+        // install_smoke_engine configures press-and-hold; the toggle hotkey must
+        // still toggle without the user changing the dictation mode.
+        install_smoke_engine(&service, FakeInserter::succeed());
+
+        let started = service
+            .handle_toggle_hotkey_event(HotkeyEventState::Pressed)
+            .unwrap();
+        assert_eq!(started.state, "Recording");
+
+        // A tap is press-then-release; release must not stop a toggle recording.
+        let after_release = service
+            .handle_toggle_hotkey_event(HotkeyEventState::Released)
+            .unwrap();
+        assert_eq!(after_release.state, "Recording");
+
+        let stopped = service
+            .handle_toggle_hotkey_event(HotkeyEventState::Pressed)
+            .unwrap();
+        assert_eq!(stopped.state, "Idle");
+        assert_eq!(
+            stopped.last_transcript.as_deref(),
+            Some("dry run transcript")
+        );
+    }
+
+    #[test]
+    fn app_status_reports_toggle_hotkey_registration_independently() {
+        let (_temp_dir, service) = temp_service();
+        service.set_hotkey_registered(
+            HotkeyRole::Toggle,
+            "Control+Option+D".to_string(),
+            "ctrl+alt+d".to_string(),
+        );
+
+        let status = service.app_status();
+
+        assert_eq!(status.hotkey, "Control+Option+Space (Not registered)");
+        assert_eq!(
+            status.toggle_hotkey,
+            "Control+Option+D (Registered, active)"
+        );
+    }
+
+    #[test]
+    fn app_status_surfaces_toggle_hotkey_registration_failure_as_recovery() {
+        let (_temp_dir, service) = temp_service();
+        service.set_hotkey_registration_failed(
+            HotkeyRole::Toggle,
+            "Control+Option+D".to_string(),
+            "shortcut already registered by another app".to_string(),
+        );
+
+        let status = service.app_status();
+
+        assert_eq!(
+            status.toggle_hotkey,
+            "Control+Option+D (Registration failed)"
+        );
+        assert!(status.recovery.contains("Hotkey unavailable"));
+    }
+
+    #[test]
     fn smoke_dictation_cycle_preserves_transcript_when_paste_fails() {
         let (_temp_dir, service) = temp_service();
         install_smoke_engine(
@@ -1187,6 +1320,7 @@ mod tests {
             dictation_mode: "toggle".to_string(),
             min_recording_ms: 400,
             hotkey: "Control+Shift+D".to_string(),
+            toggle_hotkey: "Control+Option+D".to_string(),
         };
 
         let saved = service.save_settings(settings.clone()).unwrap();
@@ -1211,6 +1345,7 @@ mod tests {
     fn app_status_surfaces_hotkey_registration_failure() {
         let (_temp_dir, service) = temp_service();
         service.set_hotkey_registration_failed(
+            HotkeyRole::Dictation,
             "Control+Option+Space".to_string(),
             "shortcut already registered by another app".to_string(),
         );
@@ -1225,10 +1360,11 @@ mod tests {
     fn app_status_tracks_last_hotkey_event() {
         let (_temp_dir, service) = temp_service();
         service.set_hotkey_registered(
+            HotkeyRole::Dictation,
             "Control+Option+Space".to_string(),
             "ctrl+alt+space".to_string(),
         );
-        service.record_hotkey_event(HotkeyEventState::Pressed);
+        service.record_hotkey_event(HotkeyRole::Dictation, HotkeyEventState::Pressed);
 
         let status = service.app_status();
 
