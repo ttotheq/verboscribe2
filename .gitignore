@@ -1,7 +1,33 @@
-/target/
-/node_modules/
+# General
+.DS_Store
+.DS_Store?
+*.log
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+config/api_keys.json
+.claude/
+
+# Node.js
+node_modules/
+dist/
+build/
+.next/
+.nuxt/
+.cache/
+*.tsbuildinfo
+
+# Project-specific Node.js paths
 /apps/desktop/node_modules/
 /apps/desktop/dist/
 /apps/desktop/src-tauri/target/
-/.DS_Store
+
+# Rust / Cargo
+/target/
+/apps/desktop/src-tauri/target/
+Cargo.lock
+
+# Codex
 /.codex/
