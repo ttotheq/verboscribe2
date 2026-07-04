@@ -45,6 +45,11 @@ pub fn cancel_dictation(service: State<'_, AppService>) -> Result<DictationStatu
 }
 
 #[tauri::command]
+pub fn paste_last_transcript(service: State<'_, AppService>) -> Result<DictationStatusDto, String> {
+    service.paste_last_transcript()
+}
+
+#[tauri::command]
 pub fn settings(service: State<'_, AppService>) -> Result<SettingsDto, String> {
     service.settings()
 }

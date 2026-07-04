@@ -90,7 +90,12 @@ features:
 ### Missing compared with the prototype
 
 - cancel hotkey
-- paste-last hotkey and paste-last user action
+- paste-last hotkey
+
+The desktop shell now includes a `Paste last transcript` user action for
+recovering a preserved transcript after paste failure, but it still lacks a
+dedicated global paste-last hotkey and a separate retry-last-failed-transcript
+workflow.
 - paste-raw user action
 - retry last failed transcript user action
 - preview/edit-before-insert flow

@@ -4,7 +4,11 @@ import "./styles.css";
 type DictationMode = "pressAndHold" | "toggle";
 type EngineState = "Idle" | "Starting" | "Recording" | "Transcribing" | "Succeeded" | "Failed";
 type RuntimePhase = "idle" | "starting" | "recording" | "transcribing" | "succeeded" | "failed";
-type DictationCommand = "start_dictation" | "stop_dictation" | "cancel_dictation";
+type DictationCommand =
+  | "start_dictation"
+  | "stop_dictation"
+  | "cancel_dictation"
+  | "paste_last_transcript";
 type NoticeTone = "success" | "warning" | "error";
 
 type StatusModel = {
@@ -93,6 +97,7 @@ type ShellElements = {
   startButton: HTMLButtonElement;
   stopButton: HTMLButtonElement;
   cancelButton: HTMLButtonElement;
+  pasteLastButton: HTMLButtonElement;
   prototypeGap: HTMLParagraphElement;
   providerMetric: HTMLParagraphElement;
   modeMetric: HTMLParagraphElement;
@@ -366,6 +371,9 @@ function mountShell() {
               <button id="start-dictation" class="button button-primary" type="button">Start</button>
               <button id="stop-dictation" class="button button-secondary" type="button">Stop</button>
               <button id="cancel-dictation" class="button button-ghost" type="button">Cancel</button>
+              <button id="paste-last-transcript" class="button button-secondary" type="button">
+                Paste last transcript
+              </button>
             </div>
 
             <div class="hint-block">
@@ -434,6 +442,7 @@ function mountShell() {
     startButton: queryElement("#start-dictation"),
     stopButton: queryElement("#stop-dictation"),
     cancelButton: queryElement("#cancel-dictation"),
+    pasteLastButton: queryElement("#paste-last-transcript"),
     prototypeGap: queryElement("#prototype-gap-copy"),
     providerMetric: queryElement("#metric-provider"),
     modeMetric: queryElement("#metric-mode"),
@@ -507,6 +516,9 @@ function wireEvents() {
   elements.cancelButton.addEventListener("click", () => {
     void runDictationCommand("cancel_dictation");
   });
+  elements.pasteLastButton.addEventListener("click", () => {
+    void runDictationCommand("paste_last_transcript");
+  });
 }
 
 function syncShell(forceFormSync = false) {
@@ -562,7 +574,7 @@ function syncShell(forceFormSync = false) {
 
   elements.prototypeGap.textContent =
     `Minimum recording duration remains backend-only at ${uiState.savedSettings.minRecordingMs} ms. ` +
-    "Cancel and paste-last hotkeys, preview-before-insert, cleanup and style controls, snippets, dictionary management, model install and refresh, history, insights, and launch behavior are still outside this first desktop settings pass.";
+    "Cancel hotkeys, retry-last-failed-transcript, preview-before-insert, cleanup and style controls, snippets, dictionary management, model install and refresh, history, insights, and launch behavior are still outside this first desktop settings pass.";
 
   elements.providerMetric.textContent = status.provider;
   elements.modeMetric.textContent = formatMode(status.dictationMode);
@@ -605,6 +617,7 @@ function syncShell(forceFormSync = false) {
   elements.stopButton.disabled =
     commandBusy || (status.engineState !== "Starting" && status.engineState !== "Recording");
   elements.cancelButton.disabled = commandBusy || status.engineState === "Idle";
+  elements.pasteLastButton.disabled = commandBusy || !(runtime.transcript ?? status.lastTranscript);
 
   elements.startButton.textContent =
     uiState.busyCommand === "start_dictation" ? "Starting..." : "Start";
@@ -612,6 +625,10 @@ function syncShell(forceFormSync = false) {
     uiState.busyCommand === "stop_dictation" ? "Stopping..." : "Stop";
   elements.cancelButton.textContent =
     uiState.busyCommand === "cancel_dictation" ? "Cancelling..." : "Cancel";
+  elements.pasteLastButton.textContent =
+    uiState.busyCommand === "paste_last_transcript"
+      ? "Pasting last transcript..."
+      : "Paste last transcript";
 }
 
 function syncNotice(element: HTMLDivElement, notice: NoticeModel | null) {

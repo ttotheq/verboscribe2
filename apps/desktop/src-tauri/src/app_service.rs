@@ -153,6 +153,7 @@ trait RuntimeDictationEngine {
     fn state(&self) -> DictationState;
     fn start_recording(&mut self) -> Result<(), DictationError>;
     fn stop_transcribe_insert(&mut self) -> Result<(), DictationError>;
+    fn paste_last(&mut self) -> Result<(), DictationError>;
     fn cancel(&mut self);
     fn hotkey(&mut self, event: HotkeyEvent) -> Result<(), DictationError>;
     fn hotkey_with_mode(
@@ -182,6 +183,10 @@ where
 
     fn stop_transcribe_insert(&mut self) -> Result<(), DictationError> {
         DictationEngine::stop_transcribe_insert(self)
+    }
+
+    fn paste_last(&mut self) -> Result<(), DictationError> {
+        DictationEngine::paste_last(self)
     }
 
     fn cancel(&mut self) {
@@ -418,6 +423,27 @@ impl AppService {
 
     pub fn cancel_dictation(&self) -> Result<DictationStatusDto, String> {
         self.drive_manual_dictation(ManualDictationAction::Cancel)
+    }
+
+    pub fn paste_last_transcript(&self) -> Result<DictationStatusDto, String> {
+        let has_transcript = self.with_dictation_runtime(|runtime| {
+            runtime.last_transcript.is_some()
+                || runtime
+                    .engine
+                    .as_ref()
+                    .is_some_and(|engine| engine.last_transcript().is_some())
+        });
+        if !has_transcript {
+            self.mutate_dictation_runtime(|runtime| {
+                runtime.recovery = Some(recovery_for_error(
+                    &DictationError::NoTranscript,
+                    current_recovery_platform(),
+                ));
+            });
+            return Err(DictationError::NoTranscript.to_string());
+        }
+
+        self.drive_dictation(|engine| engine.paste_last())
     }
 
     pub fn handle_hotkey_event(
@@ -916,8 +942,9 @@ fn paste_recovery(message: &str, platform: RecoveryPlatform) -> RecoveryDto {
         RecoveryDto {
             title: "Paste failed".to_string(),
             detail: message.to_string(),
-            next_step: "The transcript remains available so it can be copied or pasted manually."
-                .to_string(),
+            next_step:
+                "The transcript remains available so it can be pasted manually or retried with Paste last transcript."
+                    .to_string(),
         }
     }
 }
@@ -1102,28 +1129,38 @@ impl TranscriptProcessor for FakeProcessor {
 }
 
 struct FakeInserter {
-    failure: Option<String>,
+    outcomes: Vec<Result<(), DictationError>>,
 }
 
 impl FakeInserter {
     fn succeed() -> Self {
-        Self { failure: None }
+        Self {
+            outcomes: vec![Ok(())],
+        }
     }
 
     #[cfg(test)]
     fn fail(message: &str) -> Self {
         Self {
-            failure: Some(message.to_string()),
+            outcomes: vec![Err(DictationError::Paste(message.to_string()))],
+        }
+    }
+
+    #[cfg(test)]
+    fn fail_once_then_succeed(message: &str) -> Self {
+        Self {
+            outcomes: vec![Err(DictationError::Paste(message.to_string())), Ok(())],
         }
     }
 }
 
 impl TextInsertionService for FakeInserter {
     fn insert(&mut self, _text: &str, _target: Option<&TargetApp>) -> Result<(), DictationError> {
-        if let Some(message) = &self.failure {
-            return Err(DictationError::Paste(message.clone()));
+        if self.outcomes.len() > 1 {
+            return self.outcomes.remove(0);
         }
-        Ok(())
+
+        self.outcomes.first().cloned().unwrap_or(Ok(()))
     }
 }
 
@@ -1291,6 +1328,46 @@ mod tests {
             .as_ref()
             .is_some_and(|recovery| recovery.next_step.contains("remains available")));
         assert_eq!(service.app_status().last_transcript, "dry run transcript");
+    }
+
+    #[test]
+    fn paste_last_transcript_retries_a_preserved_transcript() {
+        let (_temp_dir, service) = temp_service();
+        install_smoke_engine(
+            &service,
+            FakeInserter::fail_once_then_succeed("target app did not accept paste"),
+        );
+
+        service.start_dictation().unwrap();
+        service.stop_dictation().unwrap_err();
+
+        let retried = service.paste_last_transcript().unwrap();
+        let runtime = service.runtime_status();
+
+        assert_eq!(retried.state, "Idle");
+        assert_eq!(
+            retried.last_transcript.as_deref(),
+            Some("dry run transcript")
+        );
+        assert_eq!(runtime.phase, "succeeded");
+        assert_eq!(runtime.message, "Last dictation captured");
+        assert_eq!(runtime.transcript.as_deref(), Some("dry run transcript"));
+    }
+
+    #[test]
+    fn paste_last_transcript_requires_a_previous_transcript() {
+        let (_temp_dir, service) = temp_service();
+
+        let error = service.paste_last_transcript().unwrap_err();
+        let runtime = service.runtime_status();
+
+        assert!(error.contains("no transcript is available"));
+        assert_eq!(runtime.phase, "failed");
+        assert_eq!(runtime.message, "No transcript available");
+        assert!(runtime
+            .recovery
+            .as_ref()
+            .is_some_and(|recovery| recovery.detail.contains("previous transcript")));
     }
 
     #[test]
@@ -1467,13 +1544,12 @@ mod tests {
             RecoveryPlatform::Macos,
         );
 
+        let recovery = event.recovery.unwrap();
+
         assert_eq!(event.phase, "failed");
         assert_eq!(event.transcript.as_deref(), Some("preserved transcript"));
-        assert!(event
-            .recovery
-            .unwrap()
-            .next_step
-            .contains("remains available"));
+        assert!(recovery.next_step.contains("remains available"));
+        assert!(recovery.next_step.contains("Paste last transcript"));
     }
 
     #[test]

@@ -25,9 +25,10 @@ Run manual QA against packaged builds whenever possible.
   recording only after the mode change has been saved.
 - Manual start, stop, and cancel buttons remain visible in packaged builds and
   drive the same runtime status surface as the hotkey path.
-- The prototype-gap note in the desktop UI still calls out intentionally
-  missing controls such as paste-last, preview/edit, cleanup/style/snippets,
-  history, insights, model install/refresh, and launch behavior.
+- The prototype-gap note in the desktop UI now treats paste-last as shipped and
+  still calls out intentionally missing controls such as retry-last,
+  preview/edit, cleanup/style/snippets, history, insights, model
+  install/refresh, and launch behavior.
 
 ## Vertical Slice
 
@@ -108,6 +109,9 @@ Windows target apps:
   text instead of hanging the dictation flow.
 - After a successful dictation, the last transcript should remain visible in the
   app status surface after insertion succeeds.
+- If automatic paste fails but a transcript was preserved, the `Paste last
+  transcript` button should stay enabled and recovery text should mention that
+  the transcript can be retried with that action.
 - For QA without the Tauri hotkey layer, use
   `cargo run -p verboscribe2-desktop --example live_dictation_probe -- 6000`
   with a target editor frontmost. On 2026-05-13 this inserted

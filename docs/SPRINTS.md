@@ -1466,8 +1466,8 @@ Blocked or deferred:
 
 - Minimum recording duration is still persisted in the backend but remains
   intentionally read-only in this first UI pass.
-- Transcript actions such as paste-last, retry, and preview-before-insert still
-  need their own follow-up story.
+- Retry-last-failed-transcript and preview-before-insert still need their own
+  follow-up story, but paste-last recovery is now surfaced in the desktop UI.
 - Settings are intentionally explicit-save, so QA must verify saved behavior
   instead of assuming field edits apply immediately.
 - Browser-plugin verification was not possible in this session because the

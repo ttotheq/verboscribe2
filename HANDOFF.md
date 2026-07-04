@@ -1,9 +1,12 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-06-06, after adding a second, dedicated toggle dictation
+Last updated: 2026-07-03, after surfacing `Paste last transcript` recovery in
+the desktop UI and making paste-failure recovery explicitly point users toward
+that action, on branch `feature/paste-last-recovery`.
+Prior update: 2026-06-06, after adding a second, dedicated toggle dictation
 hotkey (`Control+Option+D` by default) alongside the existing press-and-hold
 `Control+Option+Space` hotkey, on branch `feature/toggle-dictation-hotkey`.
-Prior update: 2026-05-24, after merging PR #1 — the Sprint 9 + Sprint 10
+Earlier update: 2026-05-24, after merging PR #1 — the Sprint 9 + Sprint 10
 integration branch plus the macOS menu-bar icon fix and notch-placement
 diagnosis — into `main` via the first real GitHub PR for this repo, and
 catching `origin/main` up with 13 previously-unpushed sprint commits.
@@ -35,8 +38,8 @@ cargo run -p verboscribe2-desktop --example live_dictation_probe -- 6000
 
 Expected current result:
 
-- `git status --short` prints empty (clean worktree after the PR #1 merge).
-- `git branch --show-current` prints `main`, in sync with `origin/main`.
+- `git status --short` prints empty after the local paste-last recovery commit.
+- `git branch --show-current` prints `feature/paste-last-recovery`.
 - `cargo fmt --all -- --check` passes.
 - `./scripts/verify.sh` passes.
 - `./scripts/smoke-app-service.sh` passes.
@@ -248,9 +251,13 @@ Recent implementation and planning updates:
 - Added save and reload flows in the desktop UI, re-applied the dictation
   hotkey after saves, and kept live provider, recovery, usage, and
   last-transcript visibility beside the form.
-- Added manual start, stop, and cancel buttons to the desktop shell for
-  focused runtime QA, plus a browser-preview fallback mode so the Vite build
-  still renders outside the Tauri shell when commands are unavailable.
+- Added a `Paste last transcript` desktop action backed by the app-service so a
+  transcript preserved after paste failure can be retried without recording
+  again; empty-state recovery now reports that no previous transcript is
+  available.
+- Added manual start, stop, cancel, and paste-last buttons to the desktop shell
+  for focused runtime QA, plus a browser-preview fallback mode so the Vite
+  build still renders outside the Tauri shell when commands are unavailable.
 - Follow-up UI hardening: changing dictation mode in the desktop form is still
   a draft until saved, so the UI now shows an explicit unsaved-settings warning,
   changes the save button label to `Save settings to apply`, and no longer
@@ -434,6 +441,25 @@ Docs/process:
 
 ## Latest Verification
 
+2026-07-03 (paste-last recovery branch):
+
+- RED: `cargo test -p verboscribe2-desktop
+  paste_failure_event_preserves_transcript_for_manual_recovery -- --nocapture`
+  failed as expected because paste-failure recovery text did not yet mention
+  `Paste last transcript`.
+- GREEN: the same targeted test passed after updating paste-failure recovery to
+  mention `Paste last transcript`.
+- Regression checks passed:
+  - `cargo test -p verboscribe2-desktop
+    paste_last_transcript_retries_a_preserved_transcript -- --nocapture`
+  - `cargo fmt --all -- --check`
+  - `./scripts/verify.sh` (79 Rust tests across the workspace: core 21,
+    storage 7, audio 16, platform 8, transcription 7, desktop 28; plus the
+    npm desktop build)
+  - `./scripts/smoke-app-service.sh`
+- Docs were updated to treat the desktop paste-last action as shipped while
+  keeping retry-last-failed-transcript and paste-last hotkey work in the queue.
+
 2026-06-06 (toggle-hotkey branch):
 
 - `cargo fmt --all -- --check` passed.
@@ -525,8 +551,8 @@ The current vertical slice works like this:
 14. Form edits remain drafts until `Save settings to apply` succeeds.
 15. Saving settings persists through the existing store and re-applies the
    dictation hotkey immediately.
-16. Manual start, stop, and cancel buttons drive the same app-service runtime
-   loop as the hotkey path.
+16. Manual start, stop, cancel, and paste-last buttons drive the same
+    app-service runtime loop as the hotkey path.
 17. On macOS, the desktop app uses Tauri's built-in tray-icon API (the same
     one used on Windows and Linux) with `ActivationPolicy::Regular` so the
     Dock icon stays visible. The tray icon renders the full-color VS2 mark
@@ -586,7 +612,7 @@ Current desktop UI does not yet expose most prototype controls such as:
 
 - cleanup/style/snippets/dictionary controls
 - preview/edit-before-insert
-- paste-last/retry actions
+- retry-last-failed-transcript and preview/edit-before-insert actions
 - transcript history or usage insights
 - import/export
 - launch-at-login
@@ -693,7 +719,7 @@ Implemented but not manually verified on real desktops:
 Not implemented:
 
 - cancel hotkey
-- paste-last hotkey and action
+- paste-last hotkey
 - paste-raw action
 - retry-last-failed-transcript action
 - preview/edit-before-insert flow
