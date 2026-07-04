@@ -18,6 +18,7 @@ type StatusModel = {
   dictationMode: DictationMode;
   hotkey: string;
   toggleHotkey: string;
+  cancelHotkey: string;
   pasteLastHotkey: string;
   usageHint: string;
   recovery: string;
@@ -35,6 +36,7 @@ type SettingsPayload = {
   minRecordingMs: number;
   hotkey: string;
   toggleHotkey: string;
+  cancelHotkey: string;
   pasteLastHotkey: string;
 };
 
@@ -49,6 +51,7 @@ type SettingsModel = {
   minRecordingMs: number;
   hotkey: string;
   toggleHotkey: string;
+  cancelHotkey: string;
   pasteLastHotkey: string;
 };
 
@@ -92,6 +95,7 @@ type ShellElements = {
   modelPathInput: HTMLInputElement;
   hotkeyInput: HTMLInputElement;
   toggleHotkeyInput: HTMLInputElement;
+  cancelHotkeyInput: HTMLInputElement;
   pasteLastHotkeyInput: HTMLInputElement;
   modeSelect: HTMLSelectElement;
   promptContextInput: HTMLTextAreaElement;
@@ -107,6 +111,7 @@ type ShellElements = {
   modeMetric: HTMLParagraphElement;
   hotkeyMetric: HTMLParagraphElement;
   toggleHotkeyMetric: HTMLParagraphElement;
+  cancelHotkeyMetric: HTMLParagraphElement;
   pasteLastHotkeyMetric: HTMLParagraphElement;
   healthMetric: HTMLParagraphElement;
   usageHint: HTMLParagraphElement;
@@ -127,6 +132,7 @@ const fallbackStatus: StatusModel = {
   dictationMode: "pressAndHold",
   hotkey: "Control+Option+Space",
   toggleHotkey: "Control+Option+D",
+  cancelHotkey: "Control+Option+Escape",
   pasteLastHotkey: "Control+Option+V",
   usageHint: "Hold Control+Option+Space while speaking, then release to transcribe.",
   recovery: "No recovery needed",
@@ -144,6 +150,7 @@ const fallbackSettings: SettingsModel = {
   minRecordingMs: 1_000,
   hotkey: "Control+Option+Space",
   toggleHotkey: "Control+Option+D",
+  cancelHotkey: "Control+Option+Escape",
   pasteLastHotkey: "Control+Option+V",
 };
 
@@ -186,6 +193,7 @@ function normalizeSettings(payload?: SettingsPayload | null): SettingsModel {
     minRecordingMs: payload?.minRecordingMs ?? fallbackSettings.minRecordingMs,
     hotkey: payload?.hotkey ?? fallbackSettings.hotkey,
     toggleHotkey: payload?.toggleHotkey ?? fallbackSettings.toggleHotkey,
+    cancelHotkey: payload?.cancelHotkey ?? fallbackSettings.cancelHotkey,
     pasteLastHotkey: payload?.pasteLastHotkey ?? fallbackSettings.pasteLastHotkey,
   };
 }
@@ -202,6 +210,7 @@ function serializeSettings(settings: SettingsModel): SettingsPayload {
     minRecordingMs: settings.minRecordingMs,
     hotkey: settings.hotkey.trim(),
     toggleHotkey: settings.toggleHotkey.trim(),
+    cancelHotkey: settings.cancelHotkey.trim(),
     pasteLastHotkey: settings.pasteLastHotkey.trim(),
   };
 }
@@ -305,6 +314,12 @@ function mountShell() {
               </label>
 
               <label class="field">
+                <span>Cancel hotkey</span>
+                <input name="cancelHotkey" type="text" autocomplete="off" spellcheck="false" />
+                <small>Cancels an in-progress dictation without waiting for transcription or paste.</small>
+              </label>
+
+              <label class="field">
                 <span>Paste-last hotkey</span>
                 <input name="pasteLastHotkey" type="text" autocomplete="off" spellcheck="false" />
                 <small>Retries inserting the preserved last transcript without recording again.</small>
@@ -375,6 +390,10 @@ function mountShell() {
               <article class="metric metric-wide">
                 <span>Toggle hotkey</span>
                 <p id="metric-toggle-hotkey"></p>
+              </article>
+              <article class="metric metric-wide">
+                <span>Cancel hotkey</span>
+                <p id="metric-cancel-hotkey"></p>
               </article>
               <article class="metric metric-wide">
                 <span>Paste-last hotkey</span>
@@ -453,6 +472,7 @@ function mountShell() {
     modelPathInput: queryElement('input[name="whisperCppModelPath"]'),
     hotkeyInput: queryElement('input[name="hotkey"]'),
     toggleHotkeyInput: queryElement('input[name="toggleHotkey"]'),
+    cancelHotkeyInput: queryElement('input[name="cancelHotkey"]'),
     pasteLastHotkeyInput: queryElement('input[name="pasteLastHotkey"]'),
     modeSelect: queryElement('select[name="dictationMode"]'),
     promptContextInput: queryElement('textarea[name="whisperCppPromptContext"]'),
@@ -468,6 +488,7 @@ function mountShell() {
     modeMetric: queryElement("#metric-mode"),
     hotkeyMetric: queryElement("#metric-hotkey"),
     toggleHotkeyMetric: queryElement("#metric-toggle-hotkey"),
+    cancelHotkeyMetric: queryElement("#metric-cancel-hotkey"),
     pasteLastHotkeyMetric: queryElement("#metric-paste-last-hotkey"),
     healthMetric: queryElement("#metric-health"),
     usageHint: queryElement("#usage-hint"),
@@ -521,6 +542,7 @@ function wireEvents() {
   elements.modelPathInput.addEventListener("input", inputHandler);
   elements.hotkeyInput.addEventListener("input", inputHandler);
   elements.toggleHotkeyInput.addEventListener("input", inputHandler);
+  elements.cancelHotkeyInput.addEventListener("input", inputHandler);
   elements.pasteLastHotkeyInput.addEventListener("input", inputHandler);
   elements.modeSelect.addEventListener("change", inputHandler);
   elements.promptContextInput.addEventListener("input", inputHandler);
@@ -583,6 +605,11 @@ function syncShell(forceFormSync = false) {
     forceFormSync,
   );
   syncControlValue(
+    elements.cancelHotkeyInput,
+    uiState.draftSettings.cancelHotkey,
+    forceFormSync,
+  );
+  syncControlValue(
     elements.pasteLastHotkeyInput,
     uiState.draftSettings.pasteLastHotkey,
     forceFormSync,
@@ -601,12 +628,13 @@ function syncShell(forceFormSync = false) {
 
   elements.prototypeGap.textContent =
     `Minimum recording duration remains backend-only at ${uiState.savedSettings.minRecordingMs} ms. ` +
-    "Cancel hotkeys, retry-last-failed-transcript, preview-before-insert, cleanup and style controls, snippets, dictionary management, model install and refresh, history, insights, and launch behavior are still outside this first desktop settings pass.";
+    "Retry-last-failed-transcript, preview-before-insert, cleanup and style controls, snippets, dictionary management, model install and refresh, history, insights, and launch behavior are still outside this first desktop settings pass.";
 
   elements.providerMetric.textContent = status.provider;
   elements.modeMetric.textContent = formatMode(status.dictationMode);
   elements.hotkeyMetric.textContent = status.hotkey;
   elements.toggleHotkeyMetric.textContent = status.toggleHotkey;
+  elements.cancelHotkeyMetric.textContent = status.cancelHotkey;
   elements.pasteLastHotkeyMetric.textContent = status.pasteLastHotkey;
   elements.healthMetric.textContent =
     status.recovery === "No recovery needed" ? "No recovery needed" : status.recovery;
@@ -723,6 +751,7 @@ function isSettingsField(value: string): value is keyof SettingsModel {
     value === "dictationMode" ||
     value === "hotkey" ||
     value === "toggleHotkey" ||
+    value === "cancelHotkey" ||
     value === "pasteLastHotkey"
   );
 }

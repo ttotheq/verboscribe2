@@ -1,11 +1,11 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-07-04, after finishing the dedicated paste-last hotkey slice
+Last updated: 2026-07-04, after adding a dedicated cancel hotkey
+(`Control+Option+Escape`) through desktop settings, runtime handling, and
+verification/docs, on branch `rotation/verboscribe2-20260704-cancel-hotkey`.
+Prior update: 2026-07-04, after finishing the dedicated paste-last hotkey slice
 in the desktop UI and verification/docs, on branch
 `feature/paste-last-recovery`.
-Prior update: 2026-07-03, after surfacing `Paste last transcript` recovery in
-the desktop UI and making paste-failure recovery explicitly point users toward
-that action, on branch `feature/paste-last-recovery`.
 Prior update: 2026-06-06, after adding a second, dedicated toggle dictation
 hotkey (`Control+Option+D` by default) alongside the existing press-and-hold
 `Control+Option+Space` hotkey, on branch `feature/toggle-dictation-hotkey`.
@@ -258,6 +258,10 @@ Recent implementation and planning updates:
   transcript preserved after paste failure can be retried without recording
   again; empty-state recovery now reports that no previous transcript is
   available.
+- Added a dedicated cancel hotkey with the default `Control+Option+Escape`,
+  persisted it in desktop settings/storage, surfaced its registration state in
+  backend status plus the desktop UI, and made the dedicated hotkey cancel only
+  on key press so release does not double-trigger.
 - Added manual start, stop, cancel, and paste-last buttons to the desktop shell
   for focused runtime QA, plus a browser-preview fallback mode so the Vite
   build still renders outside the Tauri shell when commands are unavailable.

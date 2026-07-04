@@ -30,6 +30,7 @@ pub struct AppStatusDto {
     pub dictation_mode: String,
     pub hotkey: String,
     pub toggle_hotkey: String,
+    pub cancel_hotkey: String,
     pub paste_last_hotkey: String,
     pub usage_hint: String,
     pub recovery: String,
@@ -56,6 +57,7 @@ pub struct SettingsDto {
     pub min_recording_ms: u64,
     pub hotkey: String,
     pub toggle_hotkey: String,
+    pub cancel_hotkey: String,
     pub paste_last_hotkey: String,
 }
 
@@ -97,6 +99,7 @@ impl From<AppSettings> for SettingsDto {
             min_recording_ms: settings.dictation.min_recording_ms,
             hotkey: settings.hotkeys.dictation,
             toggle_hotkey: settings.hotkeys.dictation_toggle,
+            cancel_hotkey: settings.hotkeys.cancel,
             paste_last_hotkey: settings.hotkeys.paste_last,
         }
     }
@@ -107,6 +110,7 @@ pub struct AppService {
     settings_store: JsonSettingsStore,
     hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
     toggle_hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
+    cancel_hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
     paste_last_hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
     dictation_runtime: Arc<Mutex<DictationRuntimeState>>,
 }
@@ -127,6 +131,7 @@ struct HotkeyRuntimeState {
 pub enum HotkeyRole {
     Dictation,
     Toggle,
+    Cancel,
     PasteLast,
 }
 
@@ -245,6 +250,7 @@ impl Default for AppService {
             settings_store: JsonSettingsStore::default_for_app("VerboScribe 2"),
             hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             toggle_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
+            cancel_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             paste_last_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             dictation_runtime: Arc::new(Mutex::new(DictationRuntimeState::default())),
         }
@@ -258,6 +264,7 @@ impl AppService {
             settings_store,
             hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             toggle_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
+            cancel_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             paste_last_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             dictation_runtime: Arc::new(Mutex::new(DictationRuntimeState::default())),
         }
@@ -275,6 +282,7 @@ impl AppService {
         let hotkey_status = self.hotkey_status(HotkeyRole::Dictation, &settings.hotkeys.dictation);
         let toggle_hotkey_status =
             self.hotkey_status(HotkeyRole::Toggle, &settings.hotkeys.dictation_toggle);
+        let cancel_hotkey_status = self.hotkey_status(HotkeyRole::Cancel, &settings.hotkeys.cancel);
         let paste_last_hotkey_status =
             self.hotkey_status(HotkeyRole::PasteLast, &settings.hotkeys.paste_last);
         let dictation_status = self.dictation_status_snapshot();
@@ -282,6 +290,7 @@ impl AppService {
             .registration_error
             .as_ref()
             .or(toggle_hotkey_status.registration_error.as_ref())
+            .or(cancel_hotkey_status.registration_error.as_ref())
             .or(paste_last_hotkey_status.registration_error.as_ref())
             .map(|error| format!("Hotkey unavailable: {error}"))
             .or_else(|| {
@@ -299,6 +308,7 @@ impl AppService {
             dictation_mode: dictation_mode_name(settings.dictation.mode).to_string(),
             hotkey: format_hotkey_status(&hotkey_status),
             toggle_hotkey: format_hotkey_status(&toggle_hotkey_status),
+            cancel_hotkey: format_hotkey_status(&cancel_hotkey_status),
             paste_last_hotkey: format_hotkey_status(&paste_last_hotkey_status),
             usage_hint: usage_hint(
                 settings.dictation.mode,
@@ -480,6 +490,17 @@ impl AppService {
 
     /// Drive the dedicated paste-last hotkey. Only the key press should retry
     /// insertion; release is ignored so a normal tap does not double-trigger.
+    pub fn handle_cancel_hotkey_event(
+        &self,
+        event: HotkeyEventState,
+    ) -> Result<DictationStatusDto, String> {
+        self.record_hotkey_event(HotkeyRole::Cancel, event);
+        match event {
+            HotkeyEventState::Pressed => self.cancel_dictation(),
+            HotkeyEventState::Released => Ok(self.current_dictation_status()),
+        }
+    }
+
     pub fn handle_paste_last_hotkey_event(
         &self,
         event: HotkeyEventState,
@@ -705,6 +726,7 @@ impl AppService {
         match role {
             HotkeyRole::Dictation => &self.hotkey_state,
             HotkeyRole::Toggle => &self.toggle_hotkey_state,
+            HotkeyRole::Cancel => &self.cancel_hotkey_state,
             HotkeyRole::PasteLast => &self.paste_last_hotkey_state,
         }
     }
@@ -782,6 +804,7 @@ impl TryFrom<SettingsDto> for AppSettings {
         settings.dictation.min_recording_ms = dto.min_recording_ms;
         settings.hotkeys.dictation = dto.hotkey;
         settings.hotkeys.dictation_toggle = dto.toggle_hotkey;
+        settings.hotkeys.cancel = dto.cancel_hotkey;
         settings.hotkeys.paste_last = dto.paste_last_hotkey;
         Ok(settings)
     }
@@ -1205,6 +1228,10 @@ mod tests {
         assert_eq!(status.hotkey, "Control+Option+Space (Not registered)");
         assert_eq!(status.toggle_hotkey, "Control+Option+D (Not registered)");
         assert_eq!(
+            status.cancel_hotkey,
+            "Control+Option+Escape (Not registered)"
+        );
+        assert_eq!(
             status.paste_last_hotkey,
             "Control+Option+V (Not registered)"
         );
@@ -1316,6 +1343,10 @@ mod tests {
             "Control+Option+D (Registered, active)"
         );
         assert_eq!(
+            status.cancel_hotkey,
+            "Control+Option+Escape (Not registered)"
+        );
+        assert_eq!(
             status.paste_last_hotkey,
             "Control+Option+V (Not registered)"
         );
@@ -1337,10 +1368,34 @@ mod tests {
             "Control+Option+D (Registration failed)"
         );
         assert_eq!(
+            status.cancel_hotkey,
+            "Control+Option+Escape (Not registered)"
+        );
+        assert_eq!(
             status.paste_last_hotkey,
             "Control+Option+V (Not registered)"
         );
         assert!(status.recovery.contains("Hotkey unavailable"));
+    }
+
+    #[test]
+    fn cancel_hotkey_cancels_active_recording_on_press_only() {
+        let (_temp_dir, service) = temp_service();
+        install_smoke_engine(&service, FakeInserter::succeed());
+
+        service.start_dictation().unwrap();
+
+        let cancelled = service
+            .handle_cancel_hotkey_event(HotkeyEventState::Pressed)
+            .unwrap();
+        let after_release = service
+            .handle_cancel_hotkey_event(HotkeyEventState::Released)
+            .unwrap();
+
+        assert_eq!(cancelled.state, "Idle");
+        assert_eq!(cancelled.last_transcript, None);
+        assert_eq!(after_release.state, "Idle");
+        assert_eq!(after_release.last_transcript, None);
     }
 
     #[test]
@@ -1451,6 +1506,7 @@ mod tests {
         assert_eq!(settings.dictation_mode, "pressAndHold");
         assert_eq!(settings.hotkey, "Control+Option+Space");
         assert_eq!(settings.toggle_hotkey, "Control+Option+D");
+        assert_eq!(settings.cancel_hotkey, "Control+Option+Escape");
         assert_eq!(settings.paste_last_hotkey, "Control+Option+V");
     }
 
@@ -1468,6 +1524,7 @@ mod tests {
             min_recording_ms: 400,
             hotkey: "Control+Shift+D".to_string(),
             toggle_hotkey: "Control+Option+D".to_string(),
+            cancel_hotkey: "Control+Option+Escape".to_string(),
             paste_last_hotkey: "Control+Option+V".to_string(),
         };
 

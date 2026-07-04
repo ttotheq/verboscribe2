@@ -303,6 +303,21 @@ Acceptance criteria:
 
 Status: Done
 
+### VS2-026: Dedicated Cancel Hotkey
+
+Type: Story
+Epic: EPIC-04A
+User value: Users can abort an in-progress dictation from the keyboard without
+triggering transcription, paste, or a duplicate cancel on key release.
+Acceptance criteria:
+
+- Persist a dedicated cancel hotkey with a documented default.
+- Route the dedicated hotkey to `cancel_dictation` only on key press.
+- Surface the cancel hotkey in desktop settings and status UI.
+- Update verification and handoff docs to reflect the shipped shortcut.
+
+Status: Done
+
 ## Ready
 
 ### VS2-018: Windows Paste Validation And Hardening
