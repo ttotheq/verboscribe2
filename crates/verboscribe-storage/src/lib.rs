@@ -13,6 +13,7 @@ pub const DEFAULT_PROVIDER: TranscriptionProviderKind = TranscriptionProviderKin
 pub const DEFAULT_LANGUAGE: &str = "en";
 pub const DEFAULT_DICTATION_HOTKEY: &str = "Control+Option+Space";
 pub const DEFAULT_DICTATION_TOGGLE_HOTKEY: &str = "Control+Option+D";
+pub const DEFAULT_PASTE_LAST_HOTKEY: &str = "Control+Option+V";
 pub const DEFAULT_MIN_RECORDING_MS: u64 = 1_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -148,10 +149,18 @@ pub struct HotkeySettings {
     /// keeps settings files written before this field deserializable.
     #[serde(default = "default_dictation_toggle_hotkey")]
     pub dictation_toggle: String,
+    /// Dedicated recovery hotkey that retries inserting the preserved last
+    /// transcript without forcing another recording pass.
+    #[serde(default = "default_paste_last_hotkey")]
+    pub paste_last: String,
 }
 
 fn default_dictation_toggle_hotkey() -> String {
     DEFAULT_DICTATION_TOGGLE_HOTKEY.to_string()
+}
+
+fn default_paste_last_hotkey() -> String {
+    DEFAULT_PASTE_LAST_HOTKEY.to_string()
 }
 
 impl Default for HotkeySettings {
@@ -159,6 +168,7 @@ impl Default for HotkeySettings {
         Self {
             dictation: DEFAULT_DICTATION_HOTKEY.to_string(),
             dictation_toggle: DEFAULT_DICTATION_TOGGLE_HOTKEY.to_string(),
+            paste_last: DEFAULT_PASTE_LAST_HOTKEY.to_string(),
         }
     }
 }
@@ -290,6 +300,7 @@ mod tests {
         assert_eq!(settings.dictation.min_recording_ms, 1_000);
         assert_eq!(settings.hotkeys.dictation, "Control+Option+Space");
         assert_eq!(settings.hotkeys.dictation_toggle, "Control+Option+D");
+        assert_eq!(settings.hotkeys.paste_last, "Control+Option+V");
     }
 
     #[test]
@@ -376,8 +387,9 @@ mod tests {
 
         assert_eq!(settings.transcription.whisper_cpp.prompt_context, "");
         assert_eq!(settings.transcription.whisper_cpp.pinned_terms, "");
-        // Settings written before the toggle hotkey existed fall back to the default.
+        // Settings written before the toggle and paste-last hotkeys existed fall back to defaults.
         assert_eq!(settings.hotkeys.dictation_toggle, "Control+Option+D");
+        assert_eq!(settings.hotkeys.paste_last, "Control+Option+V");
     }
 
     #[test]

@@ -66,7 +66,6 @@ Status: future.
 
 - Press-and-hold mode if not already enabled in Milestone 1.
 - Cancel hotkey.
-- Paste-last hotkey.
 - Retry last failed transcription.
 - Min/max recording durations.
 - Low-input warning.

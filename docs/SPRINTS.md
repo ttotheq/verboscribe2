@@ -1438,6 +1438,10 @@ surface for the current local `whisper.cpp` dictation stack.
 - Updated manual QA and feature-inventory docs to call out the controls that
   are now present and the prototype controls that are still intentionally
   missing.
+- Follow-up recovery slice: the desktop shell now surfaces the dedicated
+  paste-last hotkey in the settings form and status rail, keeps draft edits for
+  that field in sync, and validates that a paste-last shortcut is present before
+  saving.
 
 ### Sprint Review
 
