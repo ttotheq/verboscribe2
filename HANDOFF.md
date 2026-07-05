@@ -114,9 +114,12 @@ Git workflow status:
 Current branch:
 
 - `rotation/verboscribe2-20260705-retry-failed-hotkey` — the active review
-  branch for the dedicated retry-failed hotkey follow-up across desktop
-  settings, runtime handling, and verification/docs. Push follow-up commits
-  here and update the review artifact instead of opening a duplicate.
+  branch for the dedicated retry-failed hotkey follow-up plus the desktop
+  recovery-copy/docs consistency slice across the UI, docs, and verification.
+  Merge request `!3` is open at
+  `http://192.168.0.132/ttotheq/verboscribe2/-/merge_requests/3`; push
+  follow-up commits here and update that review artifact instead of opening a
+  duplicate.
 
 GitHub workflow status:
 
