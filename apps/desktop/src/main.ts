@@ -667,7 +667,7 @@ function syncShell(forceFormSync = false) {
 
   elements.prototypeGap.textContent =
     `Minimum recording duration remains backend-only at ${uiState.savedSettings.minRecordingMs} ms. ` +
-    "Preview-before-insert, cleanup and style controls, snippets, dictionary management, model install and refresh, history, insights, and launch behavior are still outside this first desktop settings pass.";
+    "Paste-last and retry-failed recovery controls are now shipped. Preview-before-insert, cleanup and style controls, snippets, dictionary management, model install and refresh, history, insights, and launch behavior are still outside this first desktop settings pass.";
 
   elements.providerMetric.textContent = status.provider;
   elements.modeMetric.textContent = formatMode(status.dictationMode);

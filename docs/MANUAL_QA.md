@@ -26,10 +26,11 @@ Run manual QA against packaged builds whenever possible.
   recording only after the mode change has been saved.
 - Manual start, stop, and cancel buttons remain visible in packaged builds and
   drive the same runtime status surface as the hotkey path.
-- The prototype-gap note in the desktop UI now treats paste-last as shipped and
-  still calls out intentionally missing controls such as retry-last,
-  preview/edit, cleanup/style/snippets, history, insights, model
-  install/refresh, and launch behavior.
+- The prototype-gap note in the desktop UI should treat paste-last and
+  retry-failed recovery controls as shipped while still calling out
+  intentionally missing controls such as preview/edit,
+  cleanup/style/snippets, history, insights, model install/refresh, and
+  launch behavior.
 
 ## Vertical Slice
 
