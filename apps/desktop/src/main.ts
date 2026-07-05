@@ -8,7 +8,8 @@ type DictationCommand =
   | "start_dictation"
   | "stop_dictation"
   | "cancel_dictation"
-  | "paste_last_transcript";
+  | "paste_last_transcript"
+  | "retry_last_failed_transcript";
 type NoticeTone = "success" | "warning" | "error";
 
 type StatusModel = {
@@ -66,6 +67,7 @@ type RuntimeModel = {
   message: string;
   recovery?: RecoveryModel | null;
   transcript?: string | null;
+  canRetryTranscription: boolean;
 };
 
 type NoticeModel = {
@@ -106,6 +108,7 @@ type ShellElements = {
   stopButton: HTMLButtonElement;
   cancelButton: HTMLButtonElement;
   pasteLastButton: HTMLButtonElement;
+  retryLastFailedButton: HTMLButtonElement;
   prototypeGap: HTMLParagraphElement;
   providerMetric: HTMLParagraphElement;
   modeMetric: HTMLParagraphElement;
@@ -159,6 +162,7 @@ const fallbackRuntime: RuntimeModel = {
   message: "Preview mode outside the Tauri shell.",
   recovery: null,
   transcript: null,
+  canRetryTranscription: false,
 };
 
 const uiState: UiState = {
@@ -412,6 +416,9 @@ function mountShell() {
               <button id="paste-last-transcript" class="button button-secondary" type="button">
                 Paste last transcript
               </button>
+              <button id="retry-last-failed-transcript" class="button button-secondary" type="button">
+                Retry failed transcription
+              </button>
             </div>
 
             <div class="hint-block">
@@ -483,6 +490,7 @@ function mountShell() {
     stopButton: queryElement("#stop-dictation"),
     cancelButton: queryElement("#cancel-dictation"),
     pasteLastButton: queryElement("#paste-last-transcript"),
+    retryLastFailedButton: queryElement("#retry-last-failed-transcript"),
     prototypeGap: queryElement("#prototype-gap-copy"),
     providerMetric: queryElement("#metric-provider"),
     modeMetric: queryElement("#metric-mode"),
@@ -563,6 +571,9 @@ function wireEvents() {
   elements.pasteLastButton.addEventListener("click", () => {
     void runDictationCommand("paste_last_transcript");
   });
+  elements.retryLastFailedButton.addEventListener("click", () => {
+    void runDictationCommand("retry_last_failed_transcript");
+  });
 }
 
 function syncShell(forceFormSync = false) {
@@ -628,7 +639,7 @@ function syncShell(forceFormSync = false) {
 
   elements.prototypeGap.textContent =
     `Minimum recording duration remains backend-only at ${uiState.savedSettings.minRecordingMs} ms. ` +
-    "Retry-last-failed-transcript, preview-before-insert, cleanup and style controls, snippets, dictionary management, model install and refresh, history, insights, and launch behavior are still outside this first desktop settings pass.";
+    "Preview-before-insert, cleanup and style controls, snippets, dictionary management, model install and refresh, history, insights, and launch behavior are still outside this first desktop settings pass.";
 
   elements.providerMetric.textContent = status.provider;
   elements.modeMetric.textContent = formatMode(status.dictationMode);
@@ -674,6 +685,8 @@ function syncShell(forceFormSync = false) {
     commandBusy || (status.engineState !== "Starting" && status.engineState !== "Recording");
   elements.cancelButton.disabled = commandBusy || status.engineState === "Idle";
   elements.pasteLastButton.disabled = commandBusy || !(runtime.transcript ?? status.lastTranscript);
+  elements.retryLastFailedButton.disabled =
+    commandBusy || status.engineState !== "Idle" || !runtime.canRetryTranscription;
 
   elements.startButton.textContent =
     uiState.busyCommand === "start_dictation" ? "Starting..." : "Start";
@@ -685,6 +698,10 @@ function syncShell(forceFormSync = false) {
     uiState.busyCommand === "paste_last_transcript"
       ? "Pasting last transcript..."
       : "Paste last transcript";
+  elements.retryLastFailedButton.textContent =
+    uiState.busyCommand === "retry_last_failed_transcript"
+      ? "Retrying failed transcription..."
+      : "Retry failed transcription";
 }
 
 function syncNotice(element: HTMLDivElement, notice: NoticeModel | null) {

@@ -110,6 +110,7 @@ pub struct DictationEngine<Targets, Recorder, Transcriber, Processor, Inserter> 
     should_stop_after_start: bool,
     target: Option<TargetApp>,
     last_transcript: Option<String>,
+    last_failed_audio: Option<AudioCapture>,
     targets: Targets,
     recorder: Recorder,
     transcriber: Transcriber,
@@ -140,6 +141,7 @@ where
             should_stop_after_start: false,
             target: None,
             last_transcript: None,
+            last_failed_audio: None,
             targets,
             recorder,
             transcriber,
@@ -154,6 +156,10 @@ where
 
     pub fn last_transcript(&self) -> Option<&str> {
         self.last_transcript.as_deref()
+    }
+
+    pub fn can_retry_last_transcription(&self) -> bool {
+        self.last_failed_audio.is_some()
     }
 
     pub fn hotkey(&mut self, event: HotkeyEvent) -> Result<(), DictationError> {
@@ -203,6 +209,7 @@ where
 
         self.state = DictationState::Starting;
         self.should_stop_after_start = false;
+        self.last_failed_audio = None;
         self.target = self.targets.capture_target();
         if let Err(error) = self.recorder.request_permission() {
             self.state = DictationState::Idle;
@@ -230,19 +237,25 @@ where
             Ok(audio) => audio,
             Err(error) => {
                 self.state = DictationState::Idle;
+                self.last_failed_audio = None;
                 return Err(error);
             }
         };
         if audio.duration_ms < self.config.min_recording_ms {
             self.state = DictationState::Idle;
+            self.last_failed_audio = None;
             return Err(DictationError::RecordingTooShort);
         }
 
         self.state = DictationState::Transcribing;
         let raw = match self.transcriber.transcribe(&audio) {
-            Ok(raw) => raw,
+            Ok(raw) => {
+                self.last_failed_audio = None;
+                raw
+            }
             Err(error) => {
                 self.state = DictationState::Idle;
+                self.last_failed_audio = Some(audio);
                 return Err(error);
             }
         };
@@ -263,6 +276,7 @@ where
             self.recorder.cancel();
         }
         self.should_stop_after_start = false;
+        self.last_failed_audio = None;
         self.state = DictationState::Idle;
     }
 
@@ -272,6 +286,32 @@ where
             .as_deref()
             .ok_or(DictationError::NoTranscript)?;
         self.inserter.insert(transcript, self.target.as_ref())
+    }
+
+    pub fn retry_last_transcription(&mut self) -> Result<(), DictationError> {
+        let audio = self.last_failed_audio.clone().ok_or_else(|| {
+            DictationError::Transcription("no failed audio is available to retry".to_string())
+        })?;
+
+        self.state = DictationState::Transcribing;
+        let raw = match self.transcriber.transcribe(&audio) {
+            Ok(raw) => {
+                self.last_failed_audio = None;
+                raw
+            }
+            Err(error) => {
+                self.state = DictationState::Idle;
+                self.last_failed_audio = Some(audio);
+                return Err(error);
+            }
+        };
+        let processed = self.processor.process(raw.trim(), self.target.as_ref());
+        self.last_transcript = Some(processed.inserted.clone());
+        let insert_result = self
+            .inserter
+            .insert(&processed.inserted, self.target.as_ref());
+        self.state = DictationState::Idle;
+        insert_result
     }
 }
 
@@ -497,6 +537,38 @@ mod tests {
         let error = engine.paste_last().unwrap_err();
 
         assert_eq!(error, DictationError::NoTranscript);
+    }
+
+    #[test]
+    fn retry_last_transcription_replays_failed_audio_after_provider_recovers() {
+        let mut engine = DictationEngine::new(
+            DictationConfig::default(),
+            FakeTargets,
+            FakeRecorder::default(),
+            FakeTranscriber {
+                result: Err(DictationError::Transcription(
+                    "provider unavailable".to_string(),
+                )),
+            },
+            IdentityProcessor,
+            FakeInserter::default(),
+        );
+
+        engine.hotkey(HotkeyEvent::Pressed).unwrap();
+        let first_error = engine.hotkey(HotkeyEvent::Released).unwrap_err();
+
+        assert_eq!(
+            first_error,
+            DictationError::Transcription("provider unavailable".to_string())
+        );
+        assert!(engine.can_retry_last_transcription());
+        assert_eq!(engine.last_transcript(), None);
+
+        engine.transcriber.result = Ok("hello again".to_string());
+        engine.retry_last_transcription().unwrap();
+
+        assert!(!engine.can_retry_last_transcription());
+        assert_eq!(engine.last_transcript(), Some("hello again"));
     }
 
     #[test]

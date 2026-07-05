@@ -1,6 +1,10 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-07-04, after adding a dedicated cancel hotkey
+Last updated: 2026-07-04, after finishing the retry-last-failed-transcript
+vertical slice in the desktop UI/app-service/core flow, including retryable
+failure-state signaling for runtime events, on branch
+`rotation/verboscribe2-20260704-cancel-hotkey`.
+Prior update: 2026-07-04, after adding a dedicated cancel hotkey
 (`Control+Option+Escape`) through desktop settings, runtime handling, and
 verification/docs, on branch `rotation/verboscribe2-20260704-cancel-hotkey`.
 Prior update: 2026-07-04, after finishing the dedicated paste-last hotkey slice
@@ -41,8 +45,10 @@ cargo run -p verboscribe2-desktop --example live_dictation_probe -- 6000
 
 Expected current result:
 
-- `git status --short` prints empty after the local paste-last recovery commit.
-- `git branch --show-current` prints `feature/paste-last-recovery`.
+- `git status --short` prints empty after committing the retry-last-failed-
+  transcript slice.
+- `git branch --show-current` prints
+  `rotation/verboscribe2-20260704-cancel-hotkey`.
 - `cargo fmt --all -- --check` passes.
 - `./scripts/verify.sh` passes.
 - `./scripts/smoke-app-service.sh` passes.
@@ -100,10 +106,10 @@ Git workflow status:
 
 Current branch:
 
-- `main` — clean, in sync with `origin/main`. The Sprint 9 + Sprint 10
-  integration branch (`feature/sprint-9-quality-hardening`) was rebase-merged
-  via PR #1 and deleted both locally and on the remote. Open a new
-  `feature/*` branch for the next slice of work.
+- `rotation/verboscribe2-20260704-cancel-hotkey` — the active review branch for
+  the dedicated cancel hotkey plus retry-last-failed-transcript desktop slice.
+  Push follow-up commits here and update the existing GitLab merge request
+  instead of opening a duplicate.
 
 GitHub workflow status:
 
@@ -262,6 +268,10 @@ Recent implementation and planning updates:
   persisted it in desktop settings/storage, surfaced its registration state in
   backend status plus the desktop UI, and made the dedicated hotkey cancel only
   on key press so release does not double-trigger.
+- Added a `Retry failed transcription` desktop action backed by preserved failed
+  audio in the core engine and app-service layer, so provider outages can be
+  retried without re-recording; runtime failure events now mark transcription
+  failures as retryable so the UI can enable the retry affordance immediately.
 - Added manual start, stop, cancel, and paste-last buttons to the desktop shell
   for focused runtime QA, plus a browser-preview fallback mode so the Vite
   build still renders outside the Tauri shell when commands are unavailable.

@@ -65,6 +65,7 @@ features:
 - press-and-hold and toggle dictation modes work
 - global dictation hotkey works
 - dedicated paste-last hotkey works
+- retry last failed transcript action works
 - target-app tracking works
 - clipboard-first paste insertion works
 - paste failure preserves transcript for manual paste
@@ -92,7 +93,6 @@ features:
 
 - cancel hotkey
 - paste-raw user action
-- retry last failed transcript user action
 - preview/edit-before-insert flow
 - cleanup-level controls
 - spoken-command controls

@@ -68,6 +68,7 @@ pub struct RuntimeEventDto {
     pub message: String,
     pub recovery: Option<RecoveryDto>,
     pub transcript: Option<String>,
+    pub can_retry_transcription: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -164,6 +165,8 @@ trait RuntimeDictationEngine {
     fn start_recording(&mut self) -> Result<(), DictationError>;
     fn stop_transcribe_insert(&mut self) -> Result<(), DictationError>;
     fn paste_last(&mut self) -> Result<(), DictationError>;
+    fn retry_last_transcription(&mut self) -> Result<(), DictationError>;
+    fn can_retry_last_transcription(&self) -> bool;
     fn cancel(&mut self);
     fn hotkey(&mut self, event: HotkeyEvent) -> Result<(), DictationError>;
     fn hotkey_with_mode(
@@ -197,6 +200,14 @@ where
 
     fn paste_last(&mut self) -> Result<(), DictationError> {
         DictationEngine::paste_last(self)
+    }
+
+    fn retry_last_transcription(&mut self) -> Result<(), DictationError> {
+        DictationEngine::retry_last_transcription(self)
+    }
+
+    fn can_retry_last_transcription(&self) -> bool {
+        DictationEngine::can_retry_last_transcription(self)
     }
 
     fn cancel(&mut self) {
@@ -235,6 +246,7 @@ struct DictationStatusSnapshot {
     state: DictationState,
     recovery: Option<RecoveryDto>,
     last_transcript: Option<String>,
+    can_retry_transcription: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -354,6 +366,7 @@ impl AppService {
                 message: recovery.title.clone(),
                 recovery: Some(recovery),
                 transcript: status.last_transcript,
+                can_retry_transcription: status.can_retry_transcription,
             };
         }
 
@@ -467,6 +480,25 @@ impl AppService {
         self.drive_dictation(|engine| engine.paste_last())
     }
 
+    pub fn retry_last_failed_transcript(&self) -> Result<DictationStatusDto, String> {
+        let can_retry = self.with_dictation_runtime(|runtime| {
+            runtime
+                .engine
+                .as_ref()
+                .is_some_and(|engine| engine.can_retry_last_transcription())
+        });
+        if !can_retry {
+            let error =
+                DictationError::Transcription("no failed audio is available to retry".to_string());
+            self.mutate_dictation_runtime(|runtime| {
+                runtime.recovery = Some(recovery_for_error(&error, current_recovery_platform()));
+            });
+            return Err(error.to_string());
+        }
+
+        self.drive_dictation(|engine| engine.retry_last_transcription())
+    }
+
     pub fn handle_hotkey_event(
         &self,
         event: HotkeyEventState,
@@ -521,6 +553,10 @@ impl AppService {
                 .unwrap_or(DictationState::Idle),
             recovery: runtime.recovery.clone(),
             last_transcript: runtime.last_transcript.clone(),
+            can_retry_transcription: runtime
+                .engine
+                .as_ref()
+                .is_some_and(|engine| engine.can_retry_last_transcription()),
         })
     }
 
@@ -908,6 +944,7 @@ fn status_event(phase: &str, message: &str, transcript: Option<String>) -> Runti
         message: message.to_string(),
         recovery: None,
         transcript,
+        can_retry_transcription: false,
     }
 }
 
@@ -916,6 +953,7 @@ fn recovery_event(
     transcript: Option<String>,
     platform: RecoveryPlatform,
 ) -> RuntimeEventDto {
+    let can_retry_transcription = matches!(error, DictationError::Transcription(_));
     let recovery = recovery_for_error(&error, platform);
 
     RuntimeEventDto {
@@ -923,6 +961,7 @@ fn recovery_event(
         message: recovery.title.clone(),
         recovery: Some(recovery),
         transcript,
+        can_retry_transcription,
     }
 }
 
@@ -1274,6 +1313,19 @@ mod tests {
     }
 
     #[test]
+    fn recovery_event_marks_transcription_failures_as_retryable() {
+        let event = recovery_event(
+            DictationError::Transcription("provider unavailable".to_string()),
+            None,
+            RecoveryPlatform::Macos,
+        );
+
+        assert_eq!(event.phase, "failed");
+        assert_eq!(event.message, "Transcription failed");
+        assert!(event.can_retry_transcription);
+    }
+
+    #[test]
     fn smoke_dictation_cycle_succeeds_with_injected_adapters() {
         let (_temp_dir, service) = temp_service();
         install_smoke_engine(&service, FakeInserter::succeed());
@@ -1491,6 +1543,30 @@ mod tests {
             .recovery
             .as_ref()
             .is_some_and(|recovery| recovery.detail.contains("previous transcript")));
+    }
+
+    #[test]
+    fn retry_last_failed_transcript_replays_failed_audio_after_provider_recovers() {
+        let (_temp_dir, service) = temp_service();
+        install_retry_transcription_engine(&service);
+
+        service.start_dictation().unwrap();
+        let first_error = service.stop_dictation().unwrap_err();
+        let failed_runtime = service.runtime_status();
+
+        assert!(first_error.contains("provider unavailable"));
+        assert_eq!(failed_runtime.phase, "failed");
+        assert_eq!(failed_runtime.message, "Transcription failed");
+        assert!(failed_runtime.can_retry_transcription);
+
+        let retried = service.retry_last_failed_transcript().unwrap();
+        let runtime = service.runtime_status();
+
+        assert_eq!(retried.state, "Idle");
+        assert_eq!(retried.last_transcript.as_deref(), Some("retry transcript"));
+        assert_eq!(runtime.phase, "succeeded");
+        assert_eq!(runtime.transcript.as_deref(), Some("retry transcript"));
+        assert!(!runtime.can_retry_transcription);
     }
 
     #[test]
@@ -1764,6 +1840,44 @@ mod tests {
         let mut settings = AppSettings::default();
         settings.dictation.min_recording_ms = 1;
         let engine = service.fake_engine_with_inserter(settings.dictation_config(), inserter);
+        service.install_test_dictation_engine(settings, Box::new(engine));
+    }
+
+    struct RetryTranscriber {
+        outcomes: Vec<Result<String, DictationError>>,
+    }
+
+    impl TranscriptionProvider for RetryTranscriber {
+        fn transcribe(&mut self, _audio: &AudioCapture) -> Result<String, DictationError> {
+            if self.outcomes.len() > 1 {
+                return self.outcomes.remove(0);
+            }
+
+            self.outcomes
+                .first()
+                .cloned()
+                .unwrap_or_else(|| Ok("retry transcript".to_string()))
+        }
+    }
+
+    fn install_retry_transcription_engine(service: &AppService) {
+        let mut settings = AppSettings::default();
+        settings.dictation.min_recording_ms = 1;
+        let engine = DictationEngine::new(
+            settings.dictation_config(),
+            FakeTargets,
+            FakeRecorder,
+            RetryTranscriber {
+                outcomes: vec![
+                    Err(DictationError::Transcription(
+                        "provider unavailable".to_string(),
+                    )),
+                    Ok("retry transcript".to_string()),
+                ],
+            },
+            FakeProcessor,
+            FakeInserter::succeed(),
+        );
         service.install_test_dictation_engine(settings, Box::new(engine));
     }
 }

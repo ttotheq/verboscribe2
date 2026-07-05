@@ -40,6 +40,7 @@ pub fn run() {
             commands::stop_dictation,
             commands::cancel_dictation,
             commands::paste_last_transcript,
+            commands::retry_last_failed_transcript,
             commands::settings,
             commands::save_settings,
             commands::register_dictation_hotkey,
