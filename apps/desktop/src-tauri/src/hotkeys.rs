@@ -37,6 +37,9 @@ pub fn install<R: Runtime>(
                         HotkeyRole::PasteLast => {
                             handler_service.handle_paste_last_hotkey_event(state)
                         }
+                        HotkeyRole::RetryLastFailed => {
+                            handler_service.handle_retry_last_failed_hotkey_event(state)
+                        }
                     };
                     if let Err(error) = result {
                         debug_hotkeys(format!("event failed: {error}"));
@@ -78,7 +81,17 @@ pub fn register_from_settings<R: Runtime>(
             HotkeyRole::PasteLast,
             settings.paste_last_hotkey,
         );
-        dictation.and(toggle).and(cancel).and(paste_last)
+        let retry_last_failed = register_role(
+            app,
+            service,
+            HotkeyRole::RetryLastFailed,
+            settings.retry_last_failed_hotkey,
+        );
+        dictation
+            .and(toggle)
+            .and(cancel)
+            .and(paste_last)
+            .and(retry_last_failed)
     }
 }
 
@@ -135,6 +148,7 @@ fn resolve_hotkey_role(service: &AppService, shortcut: &Shortcut) -> Option<Hotk
         HotkeyRole::Toggle,
         HotkeyRole::Cancel,
         HotkeyRole::PasteLast,
+        HotkeyRole::RetryLastFailed,
     ] {
         if let Some(accelerator) = service.active_hotkey_accelerator(role) {
             if let Ok(parsed) = accelerator.parse::<Shortcut>() {
@@ -179,11 +193,26 @@ pub fn unregister_current<R: Runtime>(
             .map(|settings| settings.paste_last_hotkey.clone())
             .unwrap_or_else(|| "Unknown hotkey".to_string());
 
+        let retry_last_failed_shortcut = settings
+            .as_ref()
+            .map(|settings| settings.retry_last_failed_hotkey.clone())
+            .unwrap_or_else(|| "Unknown hotkey".to_string());
+
         let dictation = unregister_role(app, service, HotkeyRole::Dictation, dictation_shortcut);
         let toggle = unregister_role(app, service, HotkeyRole::Toggle, toggle_shortcut);
         let cancel = unregister_role(app, service, HotkeyRole::Cancel, cancel_shortcut);
         let paste_last = unregister_role(app, service, HotkeyRole::PasteLast, paste_last_shortcut);
-        dictation.and(toggle).and(cancel).and(paste_last)
+        let retry_last_failed = unregister_role(
+            app,
+            service,
+            HotkeyRole::RetryLastFailed,
+            retry_last_failed_shortcut,
+        );
+        dictation
+            .and(toggle)
+            .and(cancel)
+            .and(paste_last)
+            .and(retry_last_failed)
     }
 }
 

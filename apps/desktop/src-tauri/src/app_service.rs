@@ -32,6 +32,7 @@ pub struct AppStatusDto {
     pub toggle_hotkey: String,
     pub cancel_hotkey: String,
     pub paste_last_hotkey: String,
+    pub retry_last_failed_hotkey: String,
     pub usage_hint: String,
     pub recovery: String,
     pub last_transcript: String,
@@ -59,6 +60,7 @@ pub struct SettingsDto {
     pub toggle_hotkey: String,
     pub cancel_hotkey: String,
     pub paste_last_hotkey: String,
+    pub retry_last_failed_hotkey: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -102,6 +104,7 @@ impl From<AppSettings> for SettingsDto {
             toggle_hotkey: settings.hotkeys.dictation_toggle,
             cancel_hotkey: settings.hotkeys.cancel,
             paste_last_hotkey: settings.hotkeys.paste_last,
+            retry_last_failed_hotkey: settings.hotkeys.retry_last_failed,
         }
     }
 }
@@ -113,6 +116,7 @@ pub struct AppService {
     toggle_hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
     cancel_hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
     paste_last_hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
+    retry_last_failed_hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
     dictation_runtime: Arc<Mutex<DictationRuntimeState>>,
 }
 
@@ -134,6 +138,7 @@ pub enum HotkeyRole {
     Toggle,
     Cancel,
     PasteLast,
+    RetryLastFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -264,6 +269,7 @@ impl Default for AppService {
             toggle_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             cancel_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             paste_last_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
+            retry_last_failed_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             dictation_runtime: Arc::new(Mutex::new(DictationRuntimeState::default())),
         }
     }
@@ -278,6 +284,7 @@ impl AppService {
             toggle_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             cancel_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             paste_last_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
+            retry_last_failed_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             dictation_runtime: Arc::new(Mutex::new(DictationRuntimeState::default())),
         }
     }
@@ -297,6 +304,10 @@ impl AppService {
         let cancel_hotkey_status = self.hotkey_status(HotkeyRole::Cancel, &settings.hotkeys.cancel);
         let paste_last_hotkey_status =
             self.hotkey_status(HotkeyRole::PasteLast, &settings.hotkeys.paste_last);
+        let retry_last_failed_hotkey_status = self.hotkey_status(
+            HotkeyRole::RetryLastFailed,
+            &settings.hotkeys.retry_last_failed,
+        );
         let dictation_status = self.dictation_status_snapshot();
         let recovery = hotkey_status
             .registration_error
@@ -304,6 +315,7 @@ impl AppService {
             .or(toggle_hotkey_status.registration_error.as_ref())
             .or(cancel_hotkey_status.registration_error.as_ref())
             .or(paste_last_hotkey_status.registration_error.as_ref())
+            .or(retry_last_failed_hotkey_status.registration_error.as_ref())
             .map(|error| format!("Hotkey unavailable: {error}"))
             .or_else(|| {
                 dictation_status
@@ -322,6 +334,7 @@ impl AppService {
             toggle_hotkey: format_hotkey_status(&toggle_hotkey_status),
             cancel_hotkey: format_hotkey_status(&cancel_hotkey_status),
             paste_last_hotkey: format_hotkey_status(&paste_last_hotkey_status),
+            retry_last_failed_hotkey: format_hotkey_status(&retry_last_failed_hotkey_status),
             usage_hint: usage_hint(
                 settings.dictation.mode,
                 dictation_status.state,
@@ -540,6 +553,20 @@ impl AppService {
         self.record_hotkey_event(HotkeyRole::PasteLast, event);
         match event {
             HotkeyEventState::Pressed => self.paste_last_transcript(),
+            HotkeyEventState::Released => Ok(self.current_dictation_status()),
+        }
+    }
+
+    /// Drive the dedicated retry hotkey. Only the key press should retry the
+    /// last failed transcription; release is ignored so a normal tap does not
+    /// double-trigger.
+    pub fn handle_retry_last_failed_hotkey_event(
+        &self,
+        event: HotkeyEventState,
+    ) -> Result<DictationStatusDto, String> {
+        self.record_hotkey_event(HotkeyRole::RetryLastFailed, event);
+        match event {
+            HotkeyEventState::Pressed => self.retry_last_failed_transcript(),
             HotkeyEventState::Released => Ok(self.current_dictation_status()),
         }
     }
@@ -764,6 +791,7 @@ impl AppService {
             HotkeyRole::Toggle => &self.toggle_hotkey_state,
             HotkeyRole::Cancel => &self.cancel_hotkey_state,
             HotkeyRole::PasteLast => &self.paste_last_hotkey_state,
+            HotkeyRole::RetryLastFailed => &self.retry_last_failed_hotkey_state,
         }
     }
 
@@ -842,6 +870,7 @@ impl TryFrom<SettingsDto> for AppSettings {
         settings.hotkeys.dictation_toggle = dto.toggle_hotkey;
         settings.hotkeys.cancel = dto.cancel_hotkey;
         settings.hotkeys.paste_last = dto.paste_last_hotkey;
+        settings.hotkeys.retry_last_failed = dto.retry_last_failed_hotkey;
         Ok(settings)
     }
 }
@@ -1275,6 +1304,10 @@ mod tests {
             "Control+Option+V (Not registered)"
         );
         assert_eq!(
+            status.retry_last_failed_hotkey,
+            "Control+Option+R (Not registered)"
+        );
+        assert_eq!(
             status.usage_hint,
             "Hold Control+Option+Space while speaking, then release to transcribe."
         );
@@ -1570,6 +1603,30 @@ mod tests {
     }
 
     #[test]
+    fn retry_last_failed_hotkey_retries_failed_audio_on_press_only() {
+        let (_temp_dir, service) = temp_service();
+        install_retry_transcription_engine(&service);
+
+        service.start_dictation().unwrap();
+        service.stop_dictation().unwrap_err();
+
+        let retried = service
+            .handle_retry_last_failed_hotkey_event(HotkeyEventState::Pressed)
+            .unwrap();
+        let after_release = service
+            .handle_retry_last_failed_hotkey_event(HotkeyEventState::Released)
+            .unwrap();
+        let runtime = service.runtime_status();
+
+        assert_eq!(retried.state, "Idle");
+        assert_eq!(retried.last_transcript.as_deref(), Some("retry transcript"));
+        assert_eq!(after_release.state, "Idle");
+        assert_eq!(runtime.phase, "succeeded");
+        assert_eq!(runtime.transcript.as_deref(), Some("retry transcript"));
+        assert!(!runtime.can_retry_transcription);
+    }
+
+    #[test]
     fn settings_load_creates_defaults() {
         let (_temp_dir, service) = temp_service();
 
@@ -1584,6 +1641,7 @@ mod tests {
         assert_eq!(settings.toggle_hotkey, "Control+Option+D");
         assert_eq!(settings.cancel_hotkey, "Control+Option+Escape");
         assert_eq!(settings.paste_last_hotkey, "Control+Option+V");
+        assert_eq!(settings.retry_last_failed_hotkey, "Control+Option+R");
     }
 
     #[test]
@@ -1602,6 +1660,7 @@ mod tests {
             toggle_hotkey: "Control+Option+D".to_string(),
             cancel_hotkey: "Control+Option+Escape".to_string(),
             paste_last_hotkey: "Control+Option+V".to_string(),
+            retry_last_failed_hotkey: "Control+Shift+R".to_string(),
         };
 
         let saved = service.save_settings(settings.clone()).unwrap();

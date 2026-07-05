@@ -116,6 +116,9 @@ Windows target apps:
 - The dedicated paste-last hotkey should be visible in the settings form and the
   status rail, and after saving a new value it should retry the preserved
   transcript without starting a new recording.
+- The dedicated retry-failed hotkey should be visible in the settings form and
+  the status rail, and after saving a new value it should retry preserved failed
+  audio without starting a new recording.
 - For QA without the Tauri hotkey layer, use
   `cargo run -p verboscribe2-desktop --example live_dictation_probe -- 6000`
   with a target editor frontmost. On 2026-05-13 this inserted

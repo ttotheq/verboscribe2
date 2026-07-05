@@ -15,6 +15,7 @@ pub const DEFAULT_DICTATION_HOTKEY: &str = "Control+Option+Space";
 pub const DEFAULT_DICTATION_TOGGLE_HOTKEY: &str = "Control+Option+D";
 pub const DEFAULT_CANCEL_HOTKEY: &str = "Control+Option+Escape";
 pub const DEFAULT_PASTE_LAST_HOTKEY: &str = "Control+Option+V";
+pub const DEFAULT_RETRY_LAST_FAILED_HOTKEY: &str = "Control+Option+R";
 pub const DEFAULT_MIN_RECORDING_MS: u64 = 1_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -158,6 +159,10 @@ pub struct HotkeySettings {
     /// transcript without forcing another recording pass.
     #[serde(default = "default_paste_last_hotkey")]
     pub paste_last: String,
+    /// Dedicated recovery hotkey that retries the last failed transcription
+    /// without forcing another recording pass.
+    #[serde(default = "default_retry_last_failed_hotkey")]
+    pub retry_last_failed: String,
 }
 
 fn default_dictation_toggle_hotkey() -> String {
@@ -172,6 +177,10 @@ fn default_paste_last_hotkey() -> String {
     DEFAULT_PASTE_LAST_HOTKEY.to_string()
 }
 
+fn default_retry_last_failed_hotkey() -> String {
+    DEFAULT_RETRY_LAST_FAILED_HOTKEY.to_string()
+}
+
 impl Default for HotkeySettings {
     fn default() -> Self {
         Self {
@@ -179,6 +188,7 @@ impl Default for HotkeySettings {
             dictation_toggle: DEFAULT_DICTATION_TOGGLE_HOTKEY.to_string(),
             cancel: DEFAULT_CANCEL_HOTKEY.to_string(),
             paste_last: DEFAULT_PASTE_LAST_HOTKEY.to_string(),
+            retry_last_failed: DEFAULT_RETRY_LAST_FAILED_HOTKEY.to_string(),
         }
     }
 }
@@ -307,11 +317,15 @@ mod tests {
         assert_eq!(settings.transcription.whisper_cpp.prompt_context, "");
         assert_eq!(settings.transcription.whisper_cpp.pinned_terms, "");
         assert_eq!(settings.dictation.mode, SettingsDictationMode::PressAndHold);
-        assert_eq!(settings.dictation.min_recording_ms, 1_000);
+        assert_eq!(
+            settings.dictation.min_recording_ms,
+            DEFAULT_MIN_RECORDING_MS
+        );
         assert_eq!(settings.hotkeys.dictation, "Control+Option+Space");
         assert_eq!(settings.hotkeys.dictation_toggle, "Control+Option+D");
         assert_eq!(settings.hotkeys.cancel, "Control+Option+Escape");
         assert_eq!(settings.hotkeys.paste_last, "Control+Option+V");
+        assert_eq!(settings.hotkeys.retry_last_failed, "Control+Option+R");
     }
 
     #[test]
@@ -361,6 +375,7 @@ mod tests {
         settings.transcription.whisper_cpp.pinned_terms = "OpenAI, GPT-5".to_string();
         settings.dictation.mode = SettingsDictationMode::Toggle;
         settings.hotkeys.dictation = "Control+Shift+D".to_string();
+        settings.hotkeys.retry_last_failed = "Control+Shift+R".to_string();
 
         store.save(&settings).unwrap();
 
@@ -398,10 +413,11 @@ mod tests {
 
         assert_eq!(settings.transcription.whisper_cpp.prompt_context, "");
         assert_eq!(settings.transcription.whisper_cpp.pinned_terms, "");
-        // Settings written before the toggle, cancel, and paste-last hotkeys existed fall back to defaults.
+        // Settings written before the toggle, cancel, paste-last, and retry hotkeys existed fall back to defaults.
         assert_eq!(settings.hotkeys.dictation_toggle, "Control+Option+D");
         assert_eq!(settings.hotkeys.cancel, "Control+Option+Escape");
         assert_eq!(settings.hotkeys.paste_last, "Control+Option+V");
+        assert_eq!(settings.hotkeys.retry_last_failed, "Control+Option+R");
     }
 
     #[test]

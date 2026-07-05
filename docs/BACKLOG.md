@@ -318,6 +318,24 @@ Acceptance criteria:
 
 Status: Done
 
+### VS2-027: Dedicated Retry-Failed Hotkey
+
+Type: Story
+Epic: EPIC-04A
+User value: Users can retry the preserved failed audio from the keyboard after a
+transcription error without starting a new recording or double-triggering on key
+release.
+Acceptance criteria:
+
+- Persist a dedicated retry-failed hotkey with a documented default.
+- Route the dedicated hotkey to `retry_last_failed_transcript` only on key
+  press.
+- Surface the retry-failed hotkey in desktop settings and status UI.
+- Update QA and handoff docs to reflect the shipped shortcut and remaining
+  recovery gaps.
+
+Status: Done
+
 ## Ready
 
 ### VS2-018: Windows Paste Validation And Hardening

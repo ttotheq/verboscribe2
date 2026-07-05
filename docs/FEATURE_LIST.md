@@ -28,6 +28,7 @@ features:
 - configurable dictation hotkey
 - configurable cancel hotkey
 - configurable paste-last hotkey
+- configurable retry-failed hotkey
 - target-app tracking
 - clipboard-first paste insertion
 - paste-last and paste-raw actions

@@ -1,10 +1,13 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-07-04, after finishing the retry-last-failed-transcript
+Last updated: 2026-07-05, after adding the dedicated retry-failed hotkey
+(`Control+Option+R`) across persisted settings, desktop status/UI, runtime
+handling, and verification/docs, on branch
+`rotation/verboscribe2-20260705-retry-failed-hotkey`.
+Prior update: 2026-07-04, after finishing the retry-last-failed-transcript
 vertical slice in the desktop UI/app-service/core flow, including retryable
 failure-state signaling for runtime events, on branch
 `rotation/verboscribe2-20260704-cancel-hotkey`.
-Prior update: 2026-07-04, after adding a dedicated cancel hotkey
 (`Control+Option+Escape`) through desktop settings, runtime handling, and
 verification/docs, on branch `rotation/verboscribe2-20260704-cancel-hotkey`.
 Prior update: 2026-07-04, after finishing the dedicated paste-last hotkey slice
@@ -106,10 +109,10 @@ Git workflow status:
 
 Current branch:
 
-- `rotation/verboscribe2-20260704-cancel-hotkey` — the active review branch for
-  the dedicated cancel hotkey plus retry-last-failed-transcript desktop slice.
-  Push follow-up commits here and update the existing GitLab merge request
-  instead of opening a duplicate.
+- `rotation/verboscribe2-20260705-retry-failed-hotkey` — the active review
+  branch for the dedicated retry-failed hotkey follow-up across desktop
+  settings, runtime handling, and verification/docs. Push follow-up commits
+  here and update the review artifact instead of opening a duplicate.
 
 GitHub workflow status:
 
@@ -742,6 +745,7 @@ Implemented end-to-end:
 - clipboard-first paste insertion
 - real hotkey-to-paste app-service flow
 - dedicated paste-last hotkey recovery flow
+- dedicated retry-failed hotkey recovery flow
 - manual start, stop, and cancel controls in the desktop shell
 - macOS happy-path validation that the default shortcut can drive a full paste
   into a target editor on this machine
@@ -763,9 +767,7 @@ Implemented but not manually verified on real desktops:
 
 Not implemented:
 
-- cancel hotkey
 - paste-raw action
-- retry-last-failed-transcript action
 - preview/edit-before-insert flow
 - cleanup/style/snippets/dictionary UI
 - Groq provider support and secret storage
