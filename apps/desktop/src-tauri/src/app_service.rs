@@ -30,6 +30,7 @@ pub struct AppStatusDto {
     pub dictation_mode: String,
     pub hotkey: String,
     pub toggle_hotkey: String,
+    pub paste_last_hotkey: String,
     pub usage_hint: String,
     pub recovery: String,
     pub last_transcript: String,
@@ -55,6 +56,7 @@ pub struct SettingsDto {
     pub min_recording_ms: u64,
     pub hotkey: String,
     pub toggle_hotkey: String,
+    pub paste_last_hotkey: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -95,6 +97,7 @@ impl From<AppSettings> for SettingsDto {
             min_recording_ms: settings.dictation.min_recording_ms,
             hotkey: settings.hotkeys.dictation,
             toggle_hotkey: settings.hotkeys.dictation_toggle,
+            paste_last_hotkey: settings.hotkeys.paste_last,
         }
     }
 }
@@ -104,6 +107,7 @@ pub struct AppService {
     settings_store: JsonSettingsStore,
     hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
     toggle_hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
+    paste_last_hotkey_state: Arc<Mutex<HotkeyRuntimeState>>,
     dictation_runtime: Arc<Mutex<DictationRuntimeState>>,
 }
 
@@ -123,6 +127,7 @@ struct HotkeyRuntimeState {
 pub enum HotkeyRole {
     Dictation,
     Toggle,
+    PasteLast,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -153,6 +158,7 @@ trait RuntimeDictationEngine {
     fn state(&self) -> DictationState;
     fn start_recording(&mut self) -> Result<(), DictationError>;
     fn stop_transcribe_insert(&mut self) -> Result<(), DictationError>;
+    fn paste_last(&mut self) -> Result<(), DictationError>;
     fn cancel(&mut self);
     fn hotkey(&mut self, event: HotkeyEvent) -> Result<(), DictationError>;
     fn hotkey_with_mode(
@@ -182,6 +188,10 @@ where
 
     fn stop_transcribe_insert(&mut self) -> Result<(), DictationError> {
         DictationEngine::stop_transcribe_insert(self)
+    }
+
+    fn paste_last(&mut self) -> Result<(), DictationError> {
+        DictationEngine::paste_last(self)
     }
 
     fn cancel(&mut self) {
@@ -235,6 +245,7 @@ impl Default for AppService {
             settings_store: JsonSettingsStore::default_for_app("VerboScribe 2"),
             hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             toggle_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
+            paste_last_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             dictation_runtime: Arc::new(Mutex::new(DictationRuntimeState::default())),
         }
     }
@@ -247,6 +258,7 @@ impl AppService {
             settings_store,
             hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             toggle_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
+            paste_last_hotkey_state: Arc::new(Mutex::new(HotkeyRuntimeState::default())),
             dictation_runtime: Arc::new(Mutex::new(DictationRuntimeState::default())),
         }
     }
@@ -263,11 +275,14 @@ impl AppService {
         let hotkey_status = self.hotkey_status(HotkeyRole::Dictation, &settings.hotkeys.dictation);
         let toggle_hotkey_status =
             self.hotkey_status(HotkeyRole::Toggle, &settings.hotkeys.dictation_toggle);
+        let paste_last_hotkey_status =
+            self.hotkey_status(HotkeyRole::PasteLast, &settings.hotkeys.paste_last);
         let dictation_status = self.dictation_status_snapshot();
         let recovery = hotkey_status
             .registration_error
             .as_ref()
             .or(toggle_hotkey_status.registration_error.as_ref())
+            .or(paste_last_hotkey_status.registration_error.as_ref())
             .map(|error| format!("Hotkey unavailable: {error}"))
             .or_else(|| {
                 dictation_status
@@ -284,6 +299,7 @@ impl AppService {
             dictation_mode: dictation_mode_name(settings.dictation.mode).to_string(),
             hotkey: format_hotkey_status(&hotkey_status),
             toggle_hotkey: format_hotkey_status(&toggle_hotkey_status),
+            paste_last_hotkey: format_hotkey_status(&paste_last_hotkey_status),
             usage_hint: usage_hint(
                 settings.dictation.mode,
                 dictation_status.state,
@@ -420,6 +436,27 @@ impl AppService {
         self.drive_manual_dictation(ManualDictationAction::Cancel)
     }
 
+    pub fn paste_last_transcript(&self) -> Result<DictationStatusDto, String> {
+        let has_transcript = self.with_dictation_runtime(|runtime| {
+            runtime.last_transcript.is_some()
+                || runtime
+                    .engine
+                    .as_ref()
+                    .is_some_and(|engine| engine.last_transcript().is_some())
+        });
+        if !has_transcript {
+            self.mutate_dictation_runtime(|runtime| {
+                runtime.recovery = Some(recovery_for_error(
+                    &DictationError::NoTranscript,
+                    current_recovery_platform(),
+                ));
+            });
+            return Err(DictationError::NoTranscript.to_string());
+        }
+
+        self.drive_dictation(|engine| engine.paste_last())
+    }
+
     pub fn handle_hotkey_event(
         &self,
         event: HotkeyEventState,
@@ -439,6 +476,19 @@ impl AppService {
         self.record_hotkey_event(HotkeyRole::Toggle, event);
         let event = hotkey_event(event);
         self.drive_dictation(|engine| engine.hotkey_with_mode(DictationMode::Toggle, event))
+    }
+
+    /// Drive the dedicated paste-last hotkey. Only the key press should retry
+    /// insertion; release is ignored so a normal tap does not double-trigger.
+    pub fn handle_paste_last_hotkey_event(
+        &self,
+        event: HotkeyEventState,
+    ) -> Result<DictationStatusDto, String> {
+        self.record_hotkey_event(HotkeyRole::PasteLast, event);
+        match event {
+            HotkeyEventState::Pressed => self.paste_last_transcript(),
+            HotkeyEventState::Released => Ok(self.current_dictation_status()),
+        }
     }
 
     fn dictation_status_snapshot(&self) -> DictationStatusSnapshot {
@@ -655,6 +705,7 @@ impl AppService {
         match role {
             HotkeyRole::Dictation => &self.hotkey_state,
             HotkeyRole::Toggle => &self.toggle_hotkey_state,
+            HotkeyRole::PasteLast => &self.paste_last_hotkey_state,
         }
     }
 
@@ -731,6 +782,7 @@ impl TryFrom<SettingsDto> for AppSettings {
         settings.dictation.min_recording_ms = dto.min_recording_ms;
         settings.hotkeys.dictation = dto.hotkey;
         settings.hotkeys.dictation_toggle = dto.toggle_hotkey;
+        settings.hotkeys.paste_last = dto.paste_last_hotkey;
         Ok(settings)
     }
 }
@@ -916,8 +968,9 @@ fn paste_recovery(message: &str, platform: RecoveryPlatform) -> RecoveryDto {
         RecoveryDto {
             title: "Paste failed".to_string(),
             detail: message.to_string(),
-            next_step: "The transcript remains available so it can be copied or pasted manually."
-                .to_string(),
+            next_step:
+                "The transcript remains available so it can be pasted manually or retried with Paste last transcript."
+                    .to_string(),
         }
     }
 }
@@ -1102,28 +1155,38 @@ impl TranscriptProcessor for FakeProcessor {
 }
 
 struct FakeInserter {
-    failure: Option<String>,
+    outcomes: Vec<Result<(), DictationError>>,
 }
 
 impl FakeInserter {
     fn succeed() -> Self {
-        Self { failure: None }
+        Self {
+            outcomes: vec![Ok(())],
+        }
     }
 
     #[cfg(test)]
     fn fail(message: &str) -> Self {
         Self {
-            failure: Some(message.to_string()),
+            outcomes: vec![Err(DictationError::Paste(message.to_string()))],
+        }
+    }
+
+    #[cfg(test)]
+    fn fail_once_then_succeed(message: &str) -> Self {
+        Self {
+            outcomes: vec![Err(DictationError::Paste(message.to_string())), Ok(())],
         }
     }
 }
 
 impl TextInsertionService for FakeInserter {
     fn insert(&mut self, _text: &str, _target: Option<&TargetApp>) -> Result<(), DictationError> {
-        if let Some(message) = &self.failure {
-            return Err(DictationError::Paste(message.clone()));
+        if self.outcomes.len() > 1 {
+            return self.outcomes.remove(0);
         }
-        Ok(())
+
+        self.outcomes.first().cloned().unwrap_or(Ok(()))
     }
 }
 
@@ -1140,6 +1203,11 @@ mod tests {
         assert_eq!(status.provider, "whisper.cpp");
         assert_eq!(status.dictation_mode, "pressAndHold");
         assert_eq!(status.hotkey, "Control+Option+Space (Not registered)");
+        assert_eq!(status.toggle_hotkey, "Control+Option+D (Not registered)");
+        assert_eq!(
+            status.paste_last_hotkey,
+            "Control+Option+V (Not registered)"
+        );
         assert_eq!(
             status.usage_hint,
             "Hold Control+Option+Space while speaking, then release to transcribe."
@@ -1247,6 +1315,10 @@ mod tests {
             status.toggle_hotkey,
             "Control+Option+D (Registered, active)"
         );
+        assert_eq!(
+            status.paste_last_hotkey,
+            "Control+Option+V (Not registered)"
+        );
     }
 
     #[test]
@@ -1263,6 +1335,10 @@ mod tests {
         assert_eq!(
             status.toggle_hotkey,
             "Control+Option+D (Registration failed)"
+        );
+        assert_eq!(
+            status.paste_last_hotkey,
+            "Control+Option+V (Not registered)"
         );
         assert!(status.recovery.contains("Hotkey unavailable"));
     }
@@ -1294,6 +1370,75 @@ mod tests {
     }
 
     #[test]
+    fn paste_last_transcript_retries_a_preserved_transcript() {
+        let (_temp_dir, service) = temp_service();
+        install_smoke_engine(
+            &service,
+            FakeInserter::fail_once_then_succeed("target app did not accept paste"),
+        );
+
+        service.start_dictation().unwrap();
+        service.stop_dictation().unwrap_err();
+
+        let retried = service.paste_last_transcript().unwrap();
+        let runtime = service.runtime_status();
+
+        assert_eq!(retried.state, "Idle");
+        assert_eq!(
+            retried.last_transcript.as_deref(),
+            Some("dry run transcript")
+        );
+        assert_eq!(runtime.phase, "succeeded");
+        assert_eq!(runtime.message, "Last dictation captured");
+        assert_eq!(runtime.transcript.as_deref(), Some("dry run transcript"));
+    }
+
+    #[test]
+    fn paste_last_hotkey_retries_a_preserved_transcript() {
+        let (_temp_dir, service) = temp_service();
+        install_smoke_engine(
+            &service,
+            FakeInserter::fail_once_then_succeed("target app did not accept paste"),
+        );
+
+        service.start_dictation().unwrap();
+        service.stop_dictation().unwrap_err();
+
+        let retried = service
+            .handle_paste_last_hotkey_event(HotkeyEventState::Pressed)
+            .unwrap();
+        let after_release = service
+            .handle_paste_last_hotkey_event(HotkeyEventState::Released)
+            .unwrap();
+        let runtime = service.runtime_status();
+
+        assert_eq!(retried.state, "Idle");
+        assert_eq!(
+            retried.last_transcript.as_deref(),
+            Some("dry run transcript")
+        );
+        assert_eq!(after_release.state, "Idle");
+        assert_eq!(runtime.phase, "succeeded");
+        assert_eq!(runtime.transcript.as_deref(), Some("dry run transcript"));
+    }
+
+    #[test]
+    fn paste_last_transcript_requires_a_previous_transcript() {
+        let (_temp_dir, service) = temp_service();
+
+        let error = service.paste_last_transcript().unwrap_err();
+        let runtime = service.runtime_status();
+
+        assert!(error.contains("no transcript is available"));
+        assert_eq!(runtime.phase, "failed");
+        assert_eq!(runtime.message, "No transcript available");
+        assert!(runtime
+            .recovery
+            .as_ref()
+            .is_some_and(|recovery| recovery.detail.contains("previous transcript")));
+    }
+
+    #[test]
     fn settings_load_creates_defaults() {
         let (_temp_dir, service) = temp_service();
 
@@ -1305,6 +1450,8 @@ mod tests {
         assert_eq!(settings.whisper_cpp_pinned_terms, "");
         assert_eq!(settings.dictation_mode, "pressAndHold");
         assert_eq!(settings.hotkey, "Control+Option+Space");
+        assert_eq!(settings.toggle_hotkey, "Control+Option+D");
+        assert_eq!(settings.paste_last_hotkey, "Control+Option+V");
     }
 
     #[test]
@@ -1321,6 +1468,7 @@ mod tests {
             min_recording_ms: 400,
             hotkey: "Control+Shift+D".to_string(),
             toggle_hotkey: "Control+Option+D".to_string(),
+            paste_last_hotkey: "Control+Option+V".to_string(),
         };
 
         let saved = service.save_settings(settings.clone()).unwrap();
@@ -1467,13 +1615,12 @@ mod tests {
             RecoveryPlatform::Macos,
         );
 
+        let recovery = event.recovery.unwrap();
+
         assert_eq!(event.phase, "failed");
         assert_eq!(event.transcript.as_deref(), Some("preserved transcript"));
-        assert!(event
-            .recovery
-            .unwrap()
-            .next_step
-            .contains("remains available"));
+        assert!(recovery.next_step.contains("remains available"));
+        assert!(recovery.next_step.contains("Paste last transcript"));
     }
 
     #[test]

@@ -4,7 +4,11 @@ import "./styles.css";
 type DictationMode = "pressAndHold" | "toggle";
 type EngineState = "Idle" | "Starting" | "Recording" | "Transcribing" | "Succeeded" | "Failed";
 type RuntimePhase = "idle" | "starting" | "recording" | "transcribing" | "succeeded" | "failed";
-type DictationCommand = "start_dictation" | "stop_dictation" | "cancel_dictation";
+type DictationCommand =
+  | "start_dictation"
+  | "stop_dictation"
+  | "cancel_dictation"
+  | "paste_last_transcript";
 type NoticeTone = "success" | "warning" | "error";
 
 type StatusModel = {
@@ -14,6 +18,7 @@ type StatusModel = {
   dictationMode: DictationMode;
   hotkey: string;
   toggleHotkey: string;
+  pasteLastHotkey: string;
   usageHint: string;
   recovery: string;
   lastTranscript: string;
@@ -30,6 +35,7 @@ type SettingsPayload = {
   minRecordingMs: number;
   hotkey: string;
   toggleHotkey: string;
+  pasteLastHotkey: string;
 };
 
 type SettingsModel = {
@@ -43,6 +49,7 @@ type SettingsModel = {
   minRecordingMs: number;
   hotkey: string;
   toggleHotkey: string;
+  pasteLastHotkey: string;
 };
 
 type RecoveryModel = {
@@ -85,6 +92,7 @@ type ShellElements = {
   modelPathInput: HTMLInputElement;
   hotkeyInput: HTMLInputElement;
   toggleHotkeyInput: HTMLInputElement;
+  pasteLastHotkeyInput: HTMLInputElement;
   modeSelect: HTMLSelectElement;
   promptContextInput: HTMLTextAreaElement;
   pinnedTermsInput: HTMLTextAreaElement;
@@ -93,11 +101,13 @@ type ShellElements = {
   startButton: HTMLButtonElement;
   stopButton: HTMLButtonElement;
   cancelButton: HTMLButtonElement;
+  pasteLastButton: HTMLButtonElement;
   prototypeGap: HTMLParagraphElement;
   providerMetric: HTMLParagraphElement;
   modeMetric: HTMLParagraphElement;
   hotkeyMetric: HTMLParagraphElement;
   toggleHotkeyMetric: HTMLParagraphElement;
+  pasteLastHotkeyMetric: HTMLParagraphElement;
   healthMetric: HTMLParagraphElement;
   usageHint: HTMLParagraphElement;
   runtimePhase: HTMLParagraphElement;
@@ -117,6 +127,7 @@ const fallbackStatus: StatusModel = {
   dictationMode: "pressAndHold",
   hotkey: "Control+Option+Space",
   toggleHotkey: "Control+Option+D",
+  pasteLastHotkey: "Control+Option+V",
   usageHint: "Hold Control+Option+Space while speaking, then release to transcribe.",
   recovery: "No recovery needed",
   lastTranscript: "",
@@ -133,6 +144,7 @@ const fallbackSettings: SettingsModel = {
   minRecordingMs: 1_000,
   hotkey: "Control+Option+Space",
   toggleHotkey: "Control+Option+D",
+  pasteLastHotkey: "Control+Option+V",
 };
 
 const fallbackRuntime: RuntimeModel = {
@@ -174,6 +186,7 @@ function normalizeSettings(payload?: SettingsPayload | null): SettingsModel {
     minRecordingMs: payload?.minRecordingMs ?? fallbackSettings.minRecordingMs,
     hotkey: payload?.hotkey ?? fallbackSettings.hotkey,
     toggleHotkey: payload?.toggleHotkey ?? fallbackSettings.toggleHotkey,
+    pasteLastHotkey: payload?.pasteLastHotkey ?? fallbackSettings.pasteLastHotkey,
   };
 }
 
@@ -189,6 +202,7 @@ function serializeSettings(settings: SettingsModel): SettingsPayload {
     minRecordingMs: settings.minRecordingMs,
     hotkey: settings.hotkey.trim(),
     toggleHotkey: settings.toggleHotkey.trim(),
+    pasteLastHotkey: settings.pasteLastHotkey.trim(),
   };
 }
 
@@ -289,6 +303,12 @@ function mountShell() {
                 <input name="toggleHotkey" type="text" autocomplete="off" spellcheck="false" />
                 <small>Always toggles: tap once to start dictation, tap again to stop.</small>
               </label>
+
+              <label class="field">
+                <span>Paste-last hotkey</span>
+                <input name="pasteLastHotkey" type="text" autocomplete="off" spellcheck="false" />
+                <small>Retries inserting the preserved last transcript without recording again.</small>
+              </label>
             </div>
 
             <label class="field field-wide">
@@ -357,6 +377,10 @@ function mountShell() {
                 <p id="metric-toggle-hotkey"></p>
               </article>
               <article class="metric metric-wide">
+                <span>Paste-last hotkey</span>
+                <p id="metric-paste-last-hotkey"></p>
+              </article>
+              <article class="metric metric-wide">
                 <span>Health</span>
                 <p id="metric-health"></p>
               </article>
@@ -366,6 +390,9 @@ function mountShell() {
               <button id="start-dictation" class="button button-primary" type="button">Start</button>
               <button id="stop-dictation" class="button button-secondary" type="button">Stop</button>
               <button id="cancel-dictation" class="button button-ghost" type="button">Cancel</button>
+              <button id="paste-last-transcript" class="button button-secondary" type="button">
+                Paste last transcript
+              </button>
             </div>
 
             <div class="hint-block">
@@ -426,6 +453,7 @@ function mountShell() {
     modelPathInput: queryElement('input[name="whisperCppModelPath"]'),
     hotkeyInput: queryElement('input[name="hotkey"]'),
     toggleHotkeyInput: queryElement('input[name="toggleHotkey"]'),
+    pasteLastHotkeyInput: queryElement('input[name="pasteLastHotkey"]'),
     modeSelect: queryElement('select[name="dictationMode"]'),
     promptContextInput: queryElement('textarea[name="whisperCppPromptContext"]'),
     pinnedTermsInput: queryElement('textarea[name="whisperCppPinnedTerms"]'),
@@ -434,11 +462,13 @@ function mountShell() {
     startButton: queryElement("#start-dictation"),
     stopButton: queryElement("#stop-dictation"),
     cancelButton: queryElement("#cancel-dictation"),
+    pasteLastButton: queryElement("#paste-last-transcript"),
     prototypeGap: queryElement("#prototype-gap-copy"),
     providerMetric: queryElement("#metric-provider"),
     modeMetric: queryElement("#metric-mode"),
     hotkeyMetric: queryElement("#metric-hotkey"),
     toggleHotkeyMetric: queryElement("#metric-toggle-hotkey"),
+    pasteLastHotkeyMetric: queryElement("#metric-paste-last-hotkey"),
     healthMetric: queryElement("#metric-health"),
     usageHint: queryElement("#usage-hint"),
     runtimePhase: queryElement("#runtime-phase"),
@@ -491,6 +521,7 @@ function wireEvents() {
   elements.modelPathInput.addEventListener("input", inputHandler);
   elements.hotkeyInput.addEventListener("input", inputHandler);
   elements.toggleHotkeyInput.addEventListener("input", inputHandler);
+  elements.pasteLastHotkeyInput.addEventListener("input", inputHandler);
   elements.modeSelect.addEventListener("change", inputHandler);
   elements.promptContextInput.addEventListener("input", inputHandler);
   elements.pinnedTermsInput.addEventListener("input", inputHandler);
@@ -506,6 +537,9 @@ function wireEvents() {
   });
   elements.cancelButton.addEventListener("click", () => {
     void runDictationCommand("cancel_dictation");
+  });
+  elements.pasteLastButton.addEventListener("click", () => {
+    void runDictationCommand("paste_last_transcript");
   });
 }
 
@@ -548,6 +582,11 @@ function syncShell(forceFormSync = false) {
     uiState.draftSettings.toggleHotkey,
     forceFormSync,
   );
+  syncControlValue(
+    elements.pasteLastHotkeyInput,
+    uiState.draftSettings.pasteLastHotkey,
+    forceFormSync,
+  );
   syncControlValue(elements.modeSelect, uiState.draftSettings.dictationMode, forceFormSync);
   syncControlValue(
     elements.promptContextInput,
@@ -562,12 +601,13 @@ function syncShell(forceFormSync = false) {
 
   elements.prototypeGap.textContent =
     `Minimum recording duration remains backend-only at ${uiState.savedSettings.minRecordingMs} ms. ` +
-    "Cancel and paste-last hotkeys, preview-before-insert, cleanup and style controls, snippets, dictionary management, model install and refresh, history, insights, and launch behavior are still outside this first desktop settings pass.";
+    "Cancel hotkeys, retry-last-failed-transcript, preview-before-insert, cleanup and style controls, snippets, dictionary management, model install and refresh, history, insights, and launch behavior are still outside this first desktop settings pass.";
 
   elements.providerMetric.textContent = status.provider;
   elements.modeMetric.textContent = formatMode(status.dictationMode);
   elements.hotkeyMetric.textContent = status.hotkey;
   elements.toggleHotkeyMetric.textContent = status.toggleHotkey;
+  elements.pasteLastHotkeyMetric.textContent = status.pasteLastHotkey;
   elements.healthMetric.textContent =
     status.recovery === "No recovery needed" ? "No recovery needed" : status.recovery;
   elements.usageHint.textContent = status.usageHint;
@@ -605,6 +645,7 @@ function syncShell(forceFormSync = false) {
   elements.stopButton.disabled =
     commandBusy || (status.engineState !== "Starting" && status.engineState !== "Recording");
   elements.cancelButton.disabled = commandBusy || status.engineState === "Idle";
+  elements.pasteLastButton.disabled = commandBusy || !(runtime.transcript ?? status.lastTranscript);
 
   elements.startButton.textContent =
     uiState.busyCommand === "start_dictation" ? "Starting..." : "Start";
@@ -612,6 +653,10 @@ function syncShell(forceFormSync = false) {
     uiState.busyCommand === "stop_dictation" ? "Stopping..." : "Stop";
   elements.cancelButton.textContent =
     uiState.busyCommand === "cancel_dictation" ? "Cancelling..." : "Cancel";
+  elements.pasteLastButton.textContent =
+    uiState.busyCommand === "paste_last_transcript"
+      ? "Pasting last transcript..."
+      : "Paste last transcript";
 }
 
 function syncNotice(element: HTMLDivElement, notice: NoticeModel | null) {
@@ -677,7 +722,8 @@ function isSettingsField(value: string): value is keyof SettingsModel {
     value === "whisperCppPinnedTerms" ||
     value === "dictationMode" ||
     value === "hotkey" ||
-    value === "toggleHotkey"
+    value === "toggleHotkey" ||
+    value === "pasteLastHotkey"
   );
 }
 
@@ -828,6 +874,9 @@ function validateSettings(settings: SettingsModel): string | null {
   }
   if (!settings.toggleHotkey.trim()) {
     return "A toggle hotkey is required before settings can be saved.";
+  }
+  if (!settings.pasteLastHotkey.trim()) {
+    return "A paste-last hotkey is required before settings can be saved.";
   }
   return null;
 }

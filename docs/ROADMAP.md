@@ -52,7 +52,8 @@ Acceptance:
 Status: in progress after `VS2-024`.
 
 - Keep extending the desktop settings and operations surface.
-- Add transcript recovery actions such as paste-last, retry, or preview.
+- Keep expanding transcript recovery around the shipped paste-last action,
+  including retry-last-failed-transcript or preview-before-insert.
 - Add Groq Whisper provider behind the same trait.
 - Store Groq API key in platform secret storage.
 - Add provider status and actionable errors.
@@ -65,7 +66,6 @@ Status: future.
 
 - Press-and-hold mode if not already enabled in Milestone 1.
 - Cancel hotkey.
-- Paste-last action and hotkey.
 - Retry last failed transcription.
 - Min/max recording durations.
 - Low-input warning.

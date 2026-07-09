@@ -64,6 +64,7 @@ features:
 - live CPAL microphone recording works
 - press-and-hold and toggle dictation modes work
 - global dictation hotkey works
+- dedicated paste-last hotkey works
 - target-app tracking works
 - clipboard-first paste insertion works
 - paste failure preserves transcript for manual paste
@@ -90,7 +91,6 @@ features:
 ### Missing compared with the prototype
 
 - cancel hotkey
-- paste-last hotkey and paste-last user action
 - paste-raw user action
 - retry last failed transcript user action
 - preview/edit-before-insert flow
@@ -122,7 +122,8 @@ The Tauri UI at `apps/desktop/src/main.ts` currently shows:
 - app title
 - high-level state badge
 - editable `whisper.cpp` binary and model paths
-- editable language, dictation mode, and dictation hotkey
+- editable language, dictation mode, dictation hotkey, toggle hotkey, and
+  paste-last hotkey
 - editable prompt context and pinned terms
 - live provider, mode, hotkey, and recovery panels
 - manual start, stop, and cancel buttons

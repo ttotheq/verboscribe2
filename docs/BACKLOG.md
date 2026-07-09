@@ -286,6 +286,23 @@ Acceptance criteria:
 
 Status: Done
 
+### VS2-025: Dedicated Paste-Last Hotkey
+
+Type: Story
+Epic: EPIC-04A
+User value: Users can retry inserting the preserved last transcript without
+recording again or manually clicking back into the app.
+Acceptance criteria:
+
+- Persist a dedicated paste-last hotkey with a documented default.
+- Route the dedicated hotkey to `paste_last_transcript` without double-firing on
+  key release.
+- Surface the paste-last hotkey in desktop settings and status UI.
+- Update QA and handoff docs to reflect the shipped shortcut and remaining
+  recovery gaps.
+
+Status: Done
+
 ## Ready
 
 ### VS2-018: Windows Paste Validation And Hardening

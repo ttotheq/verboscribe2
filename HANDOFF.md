@@ -1,9 +1,15 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-06-06, after adding a second, dedicated toggle dictation
+Last updated: 2026-07-04, after finishing the dedicated paste-last hotkey slice
+in the desktop UI and verification/docs, on branch
+`feature/paste-last-recovery`.
+Prior update: 2026-07-03, after surfacing `Paste last transcript` recovery in
+the desktop UI and making paste-failure recovery explicitly point users toward
+that action, on branch `feature/paste-last-recovery`.
+Prior update: 2026-06-06, after adding a second, dedicated toggle dictation
 hotkey (`Control+Option+D` by default) alongside the existing press-and-hold
 `Control+Option+Space` hotkey, on branch `feature/toggle-dictation-hotkey`.
-Prior update: 2026-05-24, after merging PR #1 — the Sprint 9 + Sprint 10
+Earlier update: 2026-05-24, after merging PR #1 — the Sprint 9 + Sprint 10
 integration branch plus the macOS menu-bar icon fix and notch-placement
 diagnosis — into `main` via the first real GitHub PR for this repo, and
 catching `origin/main` up with 13 previously-unpushed sprint commits.
@@ -35,8 +41,8 @@ cargo run -p verboscribe2-desktop --example live_dictation_probe -- 6000
 
 Expected current result:
 
-- `git status --short` prints empty (clean worktree after the PR #1 merge).
-- `git branch --show-current` prints `main`, in sync with `origin/main`.
+- `git status --short` prints empty after the local paste-last recovery commit.
+- `git branch --show-current` prints `feature/paste-last-recovery`.
 - `cargo fmt --all -- --check` passes.
 - `./scripts/verify.sh` passes.
 - `./scripts/smoke-app-service.sh` passes.
@@ -248,9 +254,13 @@ Recent implementation and planning updates:
 - Added save and reload flows in the desktop UI, re-applied the dictation
   hotkey after saves, and kept live provider, recovery, usage, and
   last-transcript visibility beside the form.
-- Added manual start, stop, and cancel buttons to the desktop shell for
-  focused runtime QA, plus a browser-preview fallback mode so the Vite build
-  still renders outside the Tauri shell when commands are unavailable.
+- Added a `Paste last transcript` desktop action backed by the app-service so a
+  transcript preserved after paste failure can be retried without recording
+  again; empty-state recovery now reports that no previous transcript is
+  available.
+- Added manual start, stop, cancel, and paste-last buttons to the desktop shell
+  for focused runtime QA, plus a browser-preview fallback mode so the Vite
+  build still renders outside the Tauri shell when commands are unavailable.
 - Follow-up UI hardening: changing dictation mode in the desktop form is still
   a draft until saved, so the UI now shows an explicit unsaved-settings warning,
   changes the save button label to `Save settings to apply`, and no longer
@@ -434,6 +444,46 @@ Docs/process:
 
 ## Latest Verification
 
+2026-07-04 (paste-last recovery branch):
+
+- RED: `npm exec tsc -- --noEmit` failed as expected because the new
+  `pasteLastHotkeyMetric` field was declared in `ShellElements` but not yet
+  wired into the mounted desktop shell.
+- GREEN: `npm exec tsc -- --noEmit` passed after wiring the paste-last hotkey
+  field through the desktop shell, including draft tracking, status metrics, and
+  save-time validation.
+- Regression checks passed:
+  - `npm run build`
+  - `cargo test -p verboscribe2-desktop
+    paste_last_hotkey_retries_a_preserved_transcript -- --nocapture`
+  - `cargo test -p verboscribe2-desktop
+    app_status_returns_shell_defaults -- --nocapture`
+  - `cargo fmt --all -- --check`
+  - `./scripts/verify.sh`
+  - `./scripts/smoke-app-service.sh`
+- Docs were updated to mark the paste-last hotkey as shipped while keeping
+  retry-last-failed-transcript, cancel-hotkey, and preview/edit recovery work in
+  the queue.
+
+2026-07-03 (paste-last recovery branch):
+
+- RED: `cargo test -p verboscribe2-desktop
+  paste_failure_event_preserves_transcript_for_manual_recovery -- --nocapture`
+  failed as expected because paste-failure recovery text did not yet mention
+  `Paste last transcript`.
+- GREEN: the same targeted test passed after updating paste-failure recovery to
+  mention `Paste last transcript`.
+- Regression checks passed:
+  - `cargo test -p verboscribe2-desktop
+    paste_last_transcript_retries_a_preserved_transcript -- --nocapture`
+  - `cargo fmt --all -- --check`
+  - `./scripts/verify.sh` (79 Rust tests across the workspace: core 21,
+    storage 7, audio 16, platform 8, transcription 7, desktop 28; plus the
+    npm desktop build)
+  - `./scripts/smoke-app-service.sh`
+- Docs were updated to treat the desktop paste-last action as shipped while
+  keeping retry-last-failed-transcript and paste-last hotkey work in the queue.
+
 2026-06-06 (toggle-hotkey branch):
 
 - `cargo fmt --all -- --check` passed.
@@ -490,16 +540,21 @@ For the next development slice, read these first:
 The current vertical slice works like this:
 
 1. The desktop shell starts and loads persisted settings.
-2. The Tauri global shortcut plugin registers two hotkeys: the press-and-hold
+2. The Tauri global shortcut plugin registers three hotkeys: the press-and-hold
    dictation hotkey (`Control+Option+Space`, behavior follows the configured
-   `DictationSettings::mode`) and a dedicated toggle hotkey
-   (`Control+Option+D`, always toggles regardless of mode). `hotkeys.rs`
-   resolves which one fired by matching the event against each role's active
-   accelerator (`HotkeyRole::{Dictation, Toggle}`) and routes accordingly.
+   `DictationSettings::mode`), a dedicated toggle hotkey
+   (`Control+Option+D`, always toggles regardless of mode), and a dedicated
+   paste-last hotkey (`Control+Option+V`, retries the preserved transcript
+   without recording again). `hotkeys.rs` resolves which one fired by matching
+   the event against each role's active accelerator
+   (`HotkeyRole::{Dictation, Toggle, PasteLast}`) and routes accordingly.
 3. Hotkey `Pressed` is forwarded into `AppService` —
-   `handle_hotkey_event` for the press-and-hold key, or
+   `handle_hotkey_event` for the press-and-hold key,
    `handle_toggle_hotkey_event` (forces `DictationMode::Toggle` via the engine's
-   `hotkey_with_mode`) for the toggle key.
+   `hotkey_with_mode`) for the toggle key, or
+   `handle_paste_last_hotkey_event` for the dedicated recovery shortcut. The
+   paste-last hotkey intentionally ignores `Released` so one tap does not
+   double-trigger.
 4. `AppService` lazily builds a real desktop `DictationEngine` from saved
    settings.
 5. The platform target tracker captures the active app and remembers the last
@@ -518,15 +573,15 @@ The current vertical slice works like this:
 12. Status commands report idle, recording, transcribing, success, or recovery
    failure state.
 13. The desktop UI renders editable provider paths, language, dictation mode,
-   the press-and-hold hotkey, the toggle hotkey, prompt context, and pinned
-   terms beside the live status surface. The status panel shows independent
-   registration state for both hotkeys; a failure on either surfaces as a
-   "Hotkey unavailable" health warning.
+   the press-and-hold hotkey, the toggle hotkey, the paste-last hotkey, prompt
+   context, and pinned terms beside the live status surface. The status panel
+   shows independent registration state for all three hotkeys; a failure on any
+   of them surfaces as a "Hotkey unavailable" health warning.
 14. Form edits remain drafts until `Save settings to apply` succeeds.
 15. Saving settings persists through the existing store and re-applies the
-   dictation hotkey immediately.
-16. Manual start, stop, and cancel buttons drive the same app-service runtime
-   loop as the hotkey path.
+   dictation hotkeys immediately.
+16. Manual start, stop, cancel, and paste-last buttons drive the same
+    app-service runtime loop as the hotkey path.
 17. On macOS, the desktop app uses Tauri's built-in tray-icon API (the same
     one used on Windows and Linux) with `ActivationPolicy::Regular` so the
     Dock icon stays visible. The tray icon renders the full-color VS2 mark
@@ -573,7 +628,8 @@ Current desktop UI actually exposes:
 - app title
 - high-level state badge
 - editable `whisper.cpp` binary and model paths
-- editable language, dictation mode, and dictation hotkey
+- editable language, dictation mode, press-and-hold hotkey, toggle hotkey, and
+  paste-last hotkey
 - editable prompt context and pinned terms
 - provider, mode, hotkey, and recovery panels
 - manual start, stop, and cancel buttons
@@ -586,12 +642,12 @@ Current desktop UI does not yet expose most prototype controls such as:
 
 - cleanup/style/snippets/dictionary controls
 - preview/edit-before-insert
-- paste-last/retry actions
+- retry-last-failed-transcript and preview/edit-before-insert actions
 - transcript history or usage insights
 - import/export
 - launch-at-login
 - model install/refresh
-- cancel and paste-last hotkey controls
+- cancel hotkey control
 
 ## Manual Setup For Live Dictation
 
@@ -671,6 +727,7 @@ Implemented end-to-end:
 - platform target tracking
 - clipboard-first paste insertion
 - real hotkey-to-paste app-service flow
+- dedicated paste-last hotkey recovery flow
 - manual start, stop, and cancel controls in the desktop shell
 - macOS happy-path validation that the default shortcut can drive a full paste
   into a target editor on this machine
@@ -693,7 +750,6 @@ Implemented but not manually verified on real desktops:
 Not implemented:
 
 - cancel hotkey
-- paste-last hotkey and action
 - paste-raw action
 - retry-last-failed-transcript action
 - preview/edit-before-insert flow

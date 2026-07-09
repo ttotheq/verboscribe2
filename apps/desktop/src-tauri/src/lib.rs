@@ -39,6 +39,7 @@ pub fn run() {
             commands::start_dictation,
             commands::stop_dictation,
             commands::cancel_dictation,
+            commands::paste_last_transcript,
             commands::settings,
             commands::save_settings,
             commands::register_dictation_hotkey,

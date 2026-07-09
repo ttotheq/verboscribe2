@@ -33,6 +33,9 @@ pub fn install<R: Runtime>(
                     let result = match role {
                         HotkeyRole::Dictation => handler_service.handle_hotkey_event(state),
                         HotkeyRole::Toggle => handler_service.handle_toggle_hotkey_event(state),
+                        HotkeyRole::PasteLast => {
+                            handler_service.handle_paste_last_hotkey_event(state)
+                        }
                     };
                     if let Err(error) = result {
                         debug_hotkeys(format!("event failed: {error}"));
@@ -67,7 +70,13 @@ pub fn register_from_settings<R: Runtime>(
         // surfaced through app status; the first error is returned for the caller.
         let dictation = register_role(app, service, HotkeyRole::Dictation, settings.hotkey);
         let toggle = register_role(app, service, HotkeyRole::Toggle, settings.toggle_hotkey);
-        dictation.and(toggle)
+        let paste_last = register_role(
+            app,
+            service,
+            HotkeyRole::PasteLast,
+            settings.paste_last_hotkey,
+        );
+        dictation.and(toggle).and(paste_last)
     }
 }
 
@@ -119,7 +128,11 @@ fn register_role<R: Runtime>(
 /// comparing it against each role's currently active accelerator.
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 fn resolve_hotkey_role(service: &AppService, shortcut: &Shortcut) -> Option<HotkeyRole> {
-    for role in [HotkeyRole::Dictation, HotkeyRole::Toggle] {
+    for role in [
+        HotkeyRole::Dictation,
+        HotkeyRole::Toggle,
+        HotkeyRole::PasteLast,
+    ] {
         if let Some(accelerator) = service.active_hotkey_accelerator(role) {
             if let Ok(parsed) = accelerator.parse::<Shortcut>() {
                 if &parsed == shortcut {
@@ -153,9 +166,15 @@ pub fn unregister_current<R: Runtime>(
             .map(|settings| settings.toggle_hotkey.clone())
             .unwrap_or_else(|| "Unknown hotkey".to_string());
 
+        let paste_last_shortcut = settings
+            .as_ref()
+            .map(|settings| settings.paste_last_hotkey.clone())
+            .unwrap_or_else(|| "Unknown hotkey".to_string());
+
         let dictation = unregister_role(app, service, HotkeyRole::Dictation, dictation_shortcut);
         let toggle = unregister_role(app, service, HotkeyRole::Toggle, toggle_shortcut);
-        dictation.and(toggle)
+        let paste_last = unregister_role(app, service, HotkeyRole::PasteLast, paste_last_shortcut);
+        dictation.and(toggle).and(paste_last)
     }
 }
 

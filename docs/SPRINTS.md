@@ -1438,6 +1438,10 @@ surface for the current local `whisper.cpp` dictation stack.
 - Updated manual QA and feature-inventory docs to call out the controls that
   are now present and the prototype controls that are still intentionally
   missing.
+- Follow-up recovery slice: the desktop shell now surfaces the dedicated
+  paste-last hotkey in the settings form and status rail, keeps draft edits for
+  that field in sync, and validates that a paste-last shortcut is present before
+  saving.
 
 ### Sprint Review
 
@@ -1466,8 +1470,8 @@ Blocked or deferred:
 
 - Minimum recording duration is still persisted in the backend but remains
   intentionally read-only in this first UI pass.
-- Transcript actions such as paste-last, retry, and preview-before-insert still
-  need their own follow-up story.
+- Retry-last-failed-transcript and preview-before-insert still need their own
+  follow-up story, but paste-last recovery is now surfaced in the desktop UI.
 - Settings are intentionally explicit-save, so QA must verify saved behavior
   instead of assuming field edits apply immediately.
 - Browser-plugin verification was not possible in this session because the
