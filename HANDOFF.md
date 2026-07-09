@@ -1,10 +1,17 @@
 # VerboScribe 2 Handoff
 
-Last updated: 2026-07-04, after finishing the retry-last-failed-transcript
+Last updated: 2026-07-05, after tightening the desktop recovery-copy/docs slice
+so shipped cancel/retry controls are described consistently across the UI,
+feature inventory, manual QA notes, and a new regression test, on branch
+`rotation/verboscribe2-20260705-retry-failed-hotkey`.
+Prior update: 2026-07-05, after adding the dedicated retry-failed hotkey
+(`Control+Option+R`) across persisted settings, desktop status/UI, runtime
+handling, and verification/docs, on branch
+`rotation/verboscribe2-20260705-retry-failed-hotkey`.
+Prior update: 2026-07-04, after finishing the retry-last-failed-transcript
 vertical slice in the desktop UI/app-service/core flow, including retryable
 failure-state signaling for runtime events, on branch
 `rotation/verboscribe2-20260704-cancel-hotkey`.
-Prior update: 2026-07-04, after adding a dedicated cancel hotkey
 (`Control+Option+Escape`) through desktop settings, runtime handling, and
 verification/docs, on branch `rotation/verboscribe2-20260704-cancel-hotkey`.
 Prior update: 2026-07-04, after finishing the dedicated paste-last hotkey slice
@@ -45,10 +52,10 @@ cargo run -p verboscribe2-desktop --example live_dictation_probe -- 6000
 
 Expected current result:
 
-- `git status --short` prints empty after committing the retry-last-failed-
-  transcript slice.
+- `git status --short` prints empty after committing the documentation-
+  consistency follow-up for the retry/cancel recovery controls.
 - `git branch --show-current` prints
-  `rotation/verboscribe2-20260704-cancel-hotkey`.
+-  `rotation/verboscribe2-20260705-retry-failed-hotkey`.
 - `cargo fmt --all -- --check` passes.
 - `./scripts/verify.sh` passes.
 - `./scripts/smoke-app-service.sh` passes.
@@ -106,10 +113,13 @@ Git workflow status:
 
 Current branch:
 
-- `rotation/verboscribe2-20260704-cancel-hotkey` — the active review branch for
-  the dedicated cancel hotkey plus retry-last-failed-transcript desktop slice.
-  Push follow-up commits here and update the existing GitLab merge request
-  instead of opening a duplicate.
+- `rotation/verboscribe2-20260705-retry-failed-hotkey` — the active review
+  branch for the dedicated retry-failed hotkey follow-up plus the desktop
+  recovery-copy/docs consistency slice across the UI, docs, and verification.
+  Merge request `!3` is open at
+  `http://192.168.0.132/ttotheq/verboscribe2/-/merge_requests/3`; push
+  follow-up commits here and update that review artifact instead of opening a
+  duplicate.
 
 GitHub workflow status:
 
@@ -279,6 +289,12 @@ Recent implementation and planning updates:
   a draft until saved, so the UI now shows an explicit unsaved-settings warning,
   changes the save button label to `Save settings to apply`, and no longer
   implies that toggle mode is live immediately after a click.
+- Tightened the desktop prototype-gap copy and product docs so they now treat
+  paste-last plus retry-failed recovery controls and the dedicated cancel hotkey
+  as shipped instead of still describing them as missing.
+- Added `tests/documentation-copy.test.mjs` as a lightweight regression guard so
+  future desktop-copy/doc updates keep the shipped recovery controls aligned
+  across the UI, manual QA notes, and feature inventory.
 - Manual QA after the Sprint 10 UI slice confirmed the core toggle mode still
   works; the confusing behavior was that the saved settings file remained on
   `pressAndHold` until the user explicitly saved the form.
@@ -341,7 +357,9 @@ Recent implementation and planning updates:
   - `crates/verboscribe-storage/src/lib.rs`
   - `apps/desktop/src/main.ts`
   - `apps/desktop/src/styles.css`
+  - `tests/documentation-copy.test.mjs`
   - `scripts/smoke-app-service.sh`
+  - `docs/FEATURE_LIST.md`
   - `docs/MANUAL_QA.md`
   - `docs/BACKLOG.md`
   - `docs/PLATFORM_SMOKE.md`
@@ -457,6 +475,20 @@ Docs/process:
   provider fixture smoke.
 
 ## Latest Verification
+
+2026-07-05 (desktop recovery-copy consistency slice):
+
+- RED: `node --test tests/documentation-copy.test.mjs` failed as expected
+  because the desktop prototype-gap copy and docs still described shipped
+  retry/cancel recovery controls inconsistently.
+- GREEN: the same targeted test passed after updating `apps/desktop/src/main.ts`,
+  `docs/MANUAL_QA.md`, and `docs/FEATURE_LIST.md` to acknowledge the shipped
+  recovery controls and remove the stale missing-feature wording.
+- Regression checks passed:
+  - `node --test tests/documentation-copy.test.mjs`
+  - `cargo fmt --all -- --check`
+  - `./scripts/verify.sh`
+  - `./scripts/smoke-app-service.sh`
 
 2026-07-04 (paste-last recovery branch):
 
@@ -742,6 +774,7 @@ Implemented end-to-end:
 - clipboard-first paste insertion
 - real hotkey-to-paste app-service flow
 - dedicated paste-last hotkey recovery flow
+- dedicated retry-failed hotkey recovery flow
 - manual start, stop, and cancel controls in the desktop shell
 - macOS happy-path validation that the default shortcut can drive a full paste
   into a target editor on this machine
@@ -763,9 +796,7 @@ Implemented but not manually verified on real desktops:
 
 Not implemented:
 
-- cancel hotkey
 - paste-raw action
-- retry-last-failed-transcript action
 - preview/edit-before-insert flow
 - cleanup/style/snippets/dictionary UI
 - Groq provider support and secret storage

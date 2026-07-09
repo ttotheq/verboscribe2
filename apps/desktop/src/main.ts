@@ -21,6 +21,7 @@ type StatusModel = {
   toggleHotkey: string;
   cancelHotkey: string;
   pasteLastHotkey: string;
+  retryLastFailedHotkey: string;
   usageHint: string;
   recovery: string;
   lastTranscript: string;
@@ -39,6 +40,7 @@ type SettingsPayload = {
   toggleHotkey: string;
   cancelHotkey: string;
   pasteLastHotkey: string;
+  retryLastFailedHotkey?: string;
 };
 
 type SettingsModel = {
@@ -54,6 +56,7 @@ type SettingsModel = {
   toggleHotkey: string;
   cancelHotkey: string;
   pasteLastHotkey: string;
+  retryLastFailedHotkey: string;
 };
 
 type RecoveryModel = {
@@ -99,6 +102,7 @@ type ShellElements = {
   toggleHotkeyInput: HTMLInputElement;
   cancelHotkeyInput: HTMLInputElement;
   pasteLastHotkeyInput: HTMLInputElement;
+  retryLastFailedHotkeyInput: HTMLInputElement;
   modeSelect: HTMLSelectElement;
   promptContextInput: HTMLTextAreaElement;
   pinnedTermsInput: HTMLTextAreaElement;
@@ -116,6 +120,7 @@ type ShellElements = {
   toggleHotkeyMetric: HTMLParagraphElement;
   cancelHotkeyMetric: HTMLParagraphElement;
   pasteLastHotkeyMetric: HTMLParagraphElement;
+  retryLastFailedHotkeyMetric: HTMLParagraphElement;
   healthMetric: HTMLParagraphElement;
   usageHint: HTMLParagraphElement;
   runtimePhase: HTMLParagraphElement;
@@ -137,6 +142,7 @@ const fallbackStatus: StatusModel = {
   toggleHotkey: "Control+Option+D",
   cancelHotkey: "Control+Option+Escape",
   pasteLastHotkey: "Control+Option+V",
+  retryLastFailedHotkey: "Control+Option+R",
   usageHint: "Hold Control+Option+Space while speaking, then release to transcribe.",
   recovery: "No recovery needed",
   lastTranscript: "",
@@ -155,6 +161,7 @@ const fallbackSettings: SettingsModel = {
   toggleHotkey: "Control+Option+D",
   cancelHotkey: "Control+Option+Escape",
   pasteLastHotkey: "Control+Option+V",
+  retryLastFailedHotkey: "Control+Option+R",
 };
 
 const fallbackRuntime: RuntimeModel = {
@@ -199,6 +206,8 @@ function normalizeSettings(payload?: SettingsPayload | null): SettingsModel {
     toggleHotkey: payload?.toggleHotkey ?? fallbackSettings.toggleHotkey,
     cancelHotkey: payload?.cancelHotkey ?? fallbackSettings.cancelHotkey,
     pasteLastHotkey: payload?.pasteLastHotkey ?? fallbackSettings.pasteLastHotkey,
+    retryLastFailedHotkey:
+      payload?.retryLastFailedHotkey ?? fallbackSettings.retryLastFailedHotkey,
   };
 }
 
@@ -216,6 +225,7 @@ function serializeSettings(settings: SettingsModel): SettingsPayload {
     toggleHotkey: settings.toggleHotkey.trim(),
     cancelHotkey: settings.cancelHotkey.trim(),
     pasteLastHotkey: settings.pasteLastHotkey.trim(),
+    retryLastFailedHotkey: settings.retryLastFailedHotkey.trim(),
   };
 }
 
@@ -328,6 +338,12 @@ function mountShell() {
                 <input name="pasteLastHotkey" type="text" autocomplete="off" spellcheck="false" />
                 <small>Retries inserting the preserved last transcript without recording again.</small>
               </label>
+
+              <label class="field">
+                <span>Retry-failed hotkey</span>
+                <input name="retryLastFailedHotkey" type="text" autocomplete="off" spellcheck="false" />
+                <small>Retries the preserved failed audio after a transcription error without re-recording.</small>
+              </label>
             </div>
 
             <label class="field field-wide">
@@ -402,6 +418,10 @@ function mountShell() {
               <article class="metric metric-wide">
                 <span>Paste-last hotkey</span>
                 <p id="metric-paste-last-hotkey"></p>
+              </article>
+              <article class="metric metric-wide">
+                <span>Retry-failed hotkey</span>
+                <p id="metric-retry-last-failed-hotkey"></p>
               </article>
               <article class="metric metric-wide">
                 <span>Health</span>
@@ -481,6 +501,7 @@ function mountShell() {
     toggleHotkeyInput: queryElement('input[name="toggleHotkey"]'),
     cancelHotkeyInput: queryElement('input[name="cancelHotkey"]'),
     pasteLastHotkeyInput: queryElement('input[name="pasteLastHotkey"]'),
+    retryLastFailedHotkeyInput: queryElement('input[name="retryLastFailedHotkey"]'),
     modeSelect: queryElement('select[name="dictationMode"]'),
     promptContextInput: queryElement('textarea[name="whisperCppPromptContext"]'),
     pinnedTermsInput: queryElement('textarea[name="whisperCppPinnedTerms"]'),
@@ -498,6 +519,7 @@ function mountShell() {
     toggleHotkeyMetric: queryElement("#metric-toggle-hotkey"),
     cancelHotkeyMetric: queryElement("#metric-cancel-hotkey"),
     pasteLastHotkeyMetric: queryElement("#metric-paste-last-hotkey"),
+    retryLastFailedHotkeyMetric: queryElement("#metric-retry-last-failed-hotkey"),
     healthMetric: queryElement("#metric-health"),
     usageHint: queryElement("#usage-hint"),
     runtimePhase: queryElement("#runtime-phase"),
@@ -552,6 +574,7 @@ function wireEvents() {
   elements.toggleHotkeyInput.addEventListener("input", inputHandler);
   elements.cancelHotkeyInput.addEventListener("input", inputHandler);
   elements.pasteLastHotkeyInput.addEventListener("input", inputHandler);
+  elements.retryLastFailedHotkeyInput.addEventListener("input", inputHandler);
   elements.modeSelect.addEventListener("change", inputHandler);
   elements.promptContextInput.addEventListener("input", inputHandler);
   elements.pinnedTermsInput.addEventListener("input", inputHandler);
@@ -625,6 +648,11 @@ function syncShell(forceFormSync = false) {
     uiState.draftSettings.pasteLastHotkey,
     forceFormSync,
   );
+  syncControlValue(
+    elements.retryLastFailedHotkeyInput,
+    uiState.draftSettings.retryLastFailedHotkey,
+    forceFormSync,
+  );
   syncControlValue(elements.modeSelect, uiState.draftSettings.dictationMode, forceFormSync);
   syncControlValue(
     elements.promptContextInput,
@@ -639,7 +667,7 @@ function syncShell(forceFormSync = false) {
 
   elements.prototypeGap.textContent =
     `Minimum recording duration remains backend-only at ${uiState.savedSettings.minRecordingMs} ms. ` +
-    "Preview-before-insert, cleanup and style controls, snippets, dictionary management, model install and refresh, history, insights, and launch behavior are still outside this first desktop settings pass.";
+    "Paste-last and retry-failed recovery controls are now shipped. Preview-before-insert, cleanup and style controls, snippets, dictionary management, model install and refresh, history, insights, and launch behavior are still outside this first desktop settings pass.";
 
   elements.providerMetric.textContent = status.provider;
   elements.modeMetric.textContent = formatMode(status.dictationMode);
@@ -647,6 +675,7 @@ function syncShell(forceFormSync = false) {
   elements.toggleHotkeyMetric.textContent = status.toggleHotkey;
   elements.cancelHotkeyMetric.textContent = status.cancelHotkey;
   elements.pasteLastHotkeyMetric.textContent = status.pasteLastHotkey;
+  elements.retryLastFailedHotkeyMetric.textContent = status.retryLastFailedHotkey;
   elements.healthMetric.textContent =
     status.recovery === "No recovery needed" ? "No recovery needed" : status.recovery;
   elements.usageHint.textContent = status.usageHint;
@@ -769,7 +798,8 @@ function isSettingsField(value: string): value is keyof SettingsModel {
     value === "hotkey" ||
     value === "toggleHotkey" ||
     value === "cancelHotkey" ||
-    value === "pasteLastHotkey"
+    value === "pasteLastHotkey" ||
+    value === "retryLastFailedHotkey"
   );
 }
 
@@ -923,6 +953,9 @@ function validateSettings(settings: SettingsModel): string | null {
   }
   if (!settings.pasteLastHotkey.trim()) {
     return "A paste-last hotkey is required before settings can be saved.";
+  }
+  if (!settings.retryLastFailedHotkey.trim()) {
+    return "A retry-failed hotkey is required before settings can be saved.";
   }
   return null;
 }

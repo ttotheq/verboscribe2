@@ -1463,8 +1463,10 @@ Acceptance criteria passed:
   context, and pinned terms are now editable in the UI.
 - Status, recovery, and last transcript are still visible in the same surface.
 - Saving from the desktop UI persists through the existing settings store.
-- Manual QA notes now explicitly call out the intentionally missing prototype
-  controls after this foundation slice.
+- Manual QA notes and the desktop prototype-gap copy now explicitly separate the
+  shipped recovery controls (paste-last plus retry-failed, along with the
+  dedicated cancel hotkey) from the intentionally missing prototype controls
+  after this foundation slice.
 
 Blocked or deferred:
 
@@ -1488,6 +1490,7 @@ User review:
 
 Verification:
 
+- `node --test tests/documentation-copy.test.mjs` passed.
 - `cargo fmt --all -- --check` passed.
 - `./scripts/smoke-app-service.sh` passed.
 - `./scripts/verify.sh` passed.

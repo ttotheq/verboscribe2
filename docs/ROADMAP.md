@@ -52,8 +52,8 @@ Acceptance:
 Status: in progress after `VS2-024`.
 
 - Keep extending the desktop settings and operations surface.
-- Keep expanding transcript recovery around the shipped paste-last action,
-  including retry-last-failed-transcript or preview-before-insert.
+- Keep expanding transcript recovery around the shipped paste-last and retry-
+  failed actions, including preview-before-insert.
 - Add Groq Whisper provider behind the same trait.
 - Store Groq API key in platform secret storage.
 - Add provider status and actionable errors.
