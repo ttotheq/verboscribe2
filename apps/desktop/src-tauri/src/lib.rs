@@ -29,6 +29,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(ActivationPolicy::Regular);
             install_tray(app)?;
+            install_window_close_guard(app);
             hotkeys::install(app, service.clone())
         })
         .invoke_handler(tauri::generate_handler![
@@ -86,6 +87,18 @@ fn install_tray<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
     let _tray = tray_builder.build(app)?;
     sync_window_icon(app);
     Ok(())
+}
+
+fn install_window_close_guard<R: Runtime>(app: &App<R>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let window_handle = window.clone();
+        window.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window_handle.hide();
+            }
+        });
+    }
 }
 
 fn load_tray_icon() -> tauri::Result<Image<'static>> {
