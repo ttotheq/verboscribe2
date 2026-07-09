@@ -33,6 +33,7 @@ pub fn install<R: Runtime>(
                     let result = match role {
                         HotkeyRole::Dictation => handler_service.handle_hotkey_event(state),
                         HotkeyRole::Toggle => handler_service.handle_toggle_hotkey_event(state),
+                        HotkeyRole::Cancel => handler_service.handle_cancel_hotkey_event(state),
                         HotkeyRole::PasteLast => {
                             handler_service.handle_paste_last_hotkey_event(state)
                         }
@@ -70,13 +71,14 @@ pub fn register_from_settings<R: Runtime>(
         // surfaced through app status; the first error is returned for the caller.
         let dictation = register_role(app, service, HotkeyRole::Dictation, settings.hotkey);
         let toggle = register_role(app, service, HotkeyRole::Toggle, settings.toggle_hotkey);
+        let cancel = register_role(app, service, HotkeyRole::Cancel, settings.cancel_hotkey);
         let paste_last = register_role(
             app,
             service,
             HotkeyRole::PasteLast,
             settings.paste_last_hotkey,
         );
-        dictation.and(toggle).and(paste_last)
+        dictation.and(toggle).and(cancel).and(paste_last)
     }
 }
 
@@ -131,6 +133,7 @@ fn resolve_hotkey_role(service: &AppService, shortcut: &Shortcut) -> Option<Hotk
     for role in [
         HotkeyRole::Dictation,
         HotkeyRole::Toggle,
+        HotkeyRole::Cancel,
         HotkeyRole::PasteLast,
     ] {
         if let Some(accelerator) = service.active_hotkey_accelerator(role) {
@@ -166,6 +169,11 @@ pub fn unregister_current<R: Runtime>(
             .map(|settings| settings.toggle_hotkey.clone())
             .unwrap_or_else(|| "Unknown hotkey".to_string());
 
+        let cancel_shortcut = settings
+            .as_ref()
+            .map(|settings| settings.cancel_hotkey.clone())
+            .unwrap_or_else(|| "Unknown hotkey".to_string());
+
         let paste_last_shortcut = settings
             .as_ref()
             .map(|settings| settings.paste_last_hotkey.clone())
@@ -173,8 +181,9 @@ pub fn unregister_current<R: Runtime>(
 
         let dictation = unregister_role(app, service, HotkeyRole::Dictation, dictation_shortcut);
         let toggle = unregister_role(app, service, HotkeyRole::Toggle, toggle_shortcut);
+        let cancel = unregister_role(app, service, HotkeyRole::Cancel, cancel_shortcut);
         let paste_last = unregister_role(app, service, HotkeyRole::PasteLast, paste_last_shortcut);
-        dictation.and(toggle).and(paste_last)
+        dictation.and(toggle).and(cancel).and(paste_last)
     }
 }
 
@@ -275,6 +284,14 @@ mod tests {
         assert_eq!(
             normalize_hotkey_accelerator("Control+Shift+D").unwrap(),
             "ctrl+shift+d"
+        );
+    }
+
+    #[test]
+    fn normalize_escape_hotkey_for_plugin_registration() {
+        assert_eq!(
+            normalize_hotkey_accelerator("Control+Option+Escape").unwrap(),
+            "ctrl+alt+esc"
         );
     }
 

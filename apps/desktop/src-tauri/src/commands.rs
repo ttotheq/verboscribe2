@@ -50,6 +50,13 @@ pub fn paste_last_transcript(service: State<'_, AppService>) -> Result<Dictation
 }
 
 #[tauri::command]
+pub fn retry_last_failed_transcript(
+    service: State<'_, AppService>,
+) -> Result<DictationStatusDto, String> {
+    service.retry_last_failed_transcript()
+}
+
+#[tauri::command]
 pub fn settings(service: State<'_, AppService>) -> Result<SettingsDto, String> {
     service.settings()
 }
